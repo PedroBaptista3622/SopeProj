@@ -24,6 +24,110 @@ int getWords(char *base, char target[10][20])
     return n;
 }
 
+bool checkOperation(int argc, char *argv[]) {
+
+    // Check balance e End account
+     if (atoi(argv[4]) == 1 || atoi(argv[4]) == 3)
+    {
+        if (strlen(argv[5]) != 0)
+        {
+            printf("Operations 1 & 3 don't receive arguments\n");
+            return false;
+        }
+
+        if (atoi(argv[4]) == 3)
+            if (atoi(argv[1]) != 0)
+            {
+                printf("Only root can end accounts\n");
+                return false;
+            }
+
+        if (atoi(argv[4]) == 1)
+            if (atoi(argv[1]) == 0)
+            {
+                printf("Root cant check balance\n");
+                return false;
+            }
+    }
+    // Criar conta
+    else if (atoi(argv[4]) == 0)
+    {
+        if (atoi(argv[1]) != 0)
+        {
+            printf("Only root can create accounts\n");
+            return false;
+        }
+
+        int n; //number of words
+        char arr[10][20];
+
+        n = getWords(argv[5], arr);
+
+        if (n + 1 != 3)
+        {
+            printf("Must receive 3 arguments\n");
+            return false;
+        }
+
+        // Get new_account_ID
+        if (atoi(arr[0]) >= MAX_BANK_ACCOUNTS || atoi(arr[0]) < 1)
+        {
+            printf("Account ID must be between 1 and 4095\n");
+            return false;
+        }
+
+        // Inital balance
+        if (atoi(arr[1]) > MAX_BALANCE || atoi(arr[1]) < MIN_BALANCE)
+        {
+            printf("Initial balance must be between 1 and 1000000000\n");
+            return false;
+        }
+
+        // Password
+        if (strlen(arr[2]) > MAX_PASSWORD_LEN || strlen(arr[2]) < MIN_PASSWORD_LEN)
+        {
+            printf("Password must have betweern 8 and 20 letters\n");
+            return false;
+        }
+    }
+    // Transferencia
+    else
+    {
+        if (atoi(argv[1]) == 0)
+        {
+            printf("Root cant make transfers\n");
+            return false;
+        }
+
+        int n; //number of words
+        char arr[10][20];
+
+        n = getWords(argv[5], arr);
+
+        if (n + 1 != 2)
+        {
+            printf("Must receive 2 arguments\n");
+            return false;
+        }
+
+        // Get Destination account_ID
+        if (atoi(arr[0]) >= MAX_BANK_ACCOUNTS || atoi(arr[0]) < 1)
+        {
+            printf("Account ID must be between 1 and 4095\n");
+            return false;
+        }
+
+        // Value
+        if (atoi(arr[1]) > MAX_BALANCE || atoi(arr[1]) < MIN_BALANCE)
+        {
+            printf("Initial balance must be between 1 and 1000000000\n");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool checkInputs(int argc, char *argv[])
 {
     if (argc != 6)
@@ -32,9 +136,9 @@ bool checkInputs(int argc, char *argv[])
         return false;
     }
 
-    if (atoi(argv[1]) > MAX_BANK_ACCOUNTS || atoi(argv[1]) <= ADMIN_ACCOUNT_ID)
+    if (atoi(argv[1]) >= MAX_BANK_ACCOUNTS || atoi(argv[1]) < ADMIN_ACCOUNT_ID)
     {
-        printf("Account ID must be between 1 and 4096\n");
+        printf("Account ID must be between 0 and 4095\n");
         return false;
     }
 
@@ -56,78 +160,7 @@ bool checkInputs(int argc, char *argv[])
         return false;
     }
 
-    if (atoi(argv[4]) == 1 || atoi(argv[4]) == 3)
-    {
-        if (strlen(argv[5]) != 0)
-        {
-            printf("Operations 1 & 3 don't receive arguments\n");
-            return false;
-        }
-    }
-    // Criar conta
-    else if (atoi(argv[4]) == 0)
-    {
-        int n; //number of words
-        char arr[10][20];
-
-        n = getWords(argv[5], arr);
-
-        if (n + 1 != 3)
-        {
-            printf("Must receive 3 arguments\n");
-            return false;
-        }
-
-        // Get new_account_ID
-        if (atoi(arr[0]) > MAX_BANK_ACCOUNTS || atoi(arr[0]) <= ADMIN_ACCOUNT_ID)
-        {
-            printf("Account ID must be between 1 and 4096\n");
-            return false;
-        }
-
-        // Inital balance
-        if (atoi(arr[1]) > MAX_BALANCE || atoi(arr[1]) < MIN_BALANCE)
-        {
-            printf("Initial balance must be between 1 and 1000000000\n");
-            return false;
-        }
-
-        // Password
-        if (strlen(arr[2]) > MAX_PASSWORD_LEN || strlen(arr[2]) < MIN_PASSWORD_LEN)
-        {
-            printf("Password must have betweern 8 and 20 letters\n");
-            return false;
-        }
-    }
-    else
-    {
-        int n; //number of words
-        char arr[10][20];
-
-        n = getWords(argv[5], arr);
-
-        if (n + 1 != 2)
-        {
-            printf("Must receive 2 arguments\n");
-            return false;
-        }
-
-        // Get Destination account_ID
-        if (atoi(arr[0]) > MAX_BANK_ACCOUNTS || atoi(arr[0]) <= ADMIN_ACCOUNT_ID)
-        {
-            printf("Account ID must be between 1 and 4096\n");
-            return false;
-        }
-
-        // Value
-        if (atoi(arr[1]) > MAX_BALANCE || atoi(arr[1]) < MIN_BALANCE)
-        {
-            printf("Initial balance must be between 1 and 1000000000\n");
-            return false;
-        }
-    }
-
-    return true;
+    return checkOperation(argc, argv);   
 }
 
 int main(int argc, char *argv[], char *envp[])
@@ -147,8 +180,8 @@ int main(int argc, char *argv[], char *envp[])
         char arr[10][20];
         getWords(argv[5], arr);
 
-        int id_new_account = arr[0];
-        int initial_balance = arr[1];
+        int id_new_account = atoi(arr[0]);
+        int initial_balance = atoi(arr[1]);
         char account_password[20];
         strcpy(account_password, arr[2]);
     }
@@ -162,8 +195,8 @@ int main(int argc, char *argv[], char *envp[])
         char arr[10][20];
         getWords(argv[5], arr);
 
-        int id_desitnation_account = arr[0];
-        int value = arr[1];
+        int id_desitnation_account = atoi(arr[0]);
+        int value = atoi(arr[1]);
     }
     // Encerramento
     else if (op_type == 3)
