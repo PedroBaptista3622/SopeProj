@@ -3,6 +3,9 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+
+// Account stuff ---------------------------------------------------------------------------------------------------------------------------------
 
 bank_account_t contasBancarias[MAX_BANK_ACCOUNTS];//Estrutura que guarda as contas bancarias
 
@@ -117,9 +120,49 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
     //printf("Salt = <%s>\n", conta.salt);
 }
 
+//------------------------------------------------------------------------------------------------------------------------------------------------
 
+//Bank Offices stuff:-----------------------------------------------------------------------------------------------------------------------------
+
+//TODO: CHANGE FUNCTION (and args) OF THREADS
+void initializeBankOffices(const size_t nBankOffices, pthread_t **listBankOffices)
+{
+    /* 
+    *
+    * Espaco vazio, para lembrar que aqui e necessario adicionar codigo para log da criacao do bankOffice
+    * 
+    * 
+    */
+
+    free(*listBankOffices);
+
+    *listBankOffices = malloc(nBankOffices * sizeof(pthread_t));
+
+    if(*listBankOffices == NULL)
+        return;
+
+    for(size_t i = 0; i < nBankOffices; i++)
+    {
+        //pthread_create(&listTids, NULL, NULL, NULL);
+        //listTids++;
+
+        pthread_create((*listBankOffices)[i], NULL, NULL, NULL); //TODO: CHANGE FUNCTION (and args) OF THREADS
+    }
+
+}
+
+void waitForAllThreads(pthread_t listTids[], const size_t nBankOffices)
+{
+    for(size_t i = 0; i < nBankOffices; i++)
+    {
+        pthread_join(listTids[i], NULL);
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------
 int main (int argc, char *argv[], char *envp[])
 {
+
     if(checkArgs(argc, argv)) //This func returns 1 if there's any problem with the arguments
         return 1;             //If that happens, the program closes.
 
@@ -131,7 +174,17 @@ int main (int argc, char *argv[], char *envp[])
 
     createAccount(ADMIN_ACCOUNT_ID, 0, password); //Cria conta do admin
 
-    
+
+    size_t nBankOffices = atoi(argv[1]);
+    pthread_t *activeBankOfficesList = NULL;//AKA activeThreadsList; Thread id 1 => activeBankOfficesList[0];
+    //pthread_t activeBankOfficesList = malloc(sizeof(pthread_t) * nBankOffices);
+
+    initializeBankOffices(nBankOffices, *activeBankOfficesList); //activeThreads created, running and tids loaded to activeBankOfficesList
+    waitForAllThreads(activeBankOfficesList, nBankOffices);
+
+
+    //When server closes:
+    free(activeBankOfficesList);
 
     printf("Server's dead.\n");
     return 0;
