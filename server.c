@@ -125,7 +125,13 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 //Bank Offices stuff:-----------------------------------------------------------------------------------------------------------------------------
 
 //TODO: CHANGE FUNCTION (and args) OF THREADS
-void initializeBankOffices(const size_t nBankOffices, pthread_t **listBankOffices)
+void * threadFunc(void * arg)
+{
+    return NULL;
+}
+
+
+void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffices)
 {
     /* 
     *
@@ -134,19 +140,11 @@ void initializeBankOffices(const size_t nBankOffices, pthread_t **listBankOffice
     * 
     */
 
-    free(*listBankOffices);
-
-    *listBankOffices = malloc(nBankOffices * sizeof(pthread_t));
-
-    if(*listBankOffices == NULL)
-        return;
-
     for(size_t i = 0; i < nBankOffices; i++)
     {
-        //pthread_create(&listTids, NULL, NULL, NULL);
-        //listTids++;
-
-        pthread_create((*listBankOffices)[i], NULL, NULL, NULL); //TODO: CHANGE FUNCTION (and args) OF THREADS
+        pthread_t temp;
+        pthread_create(&temp, NULL, threadFunc, NULL); //TODO: CHANGE FUNCTION (and args) OF THREADS
+        listBankOffices[i] = temp;
     }
 
 }
@@ -157,6 +155,8 @@ void waitForAllThreads(pthread_t listTids[], const size_t nBankOffices)
     {
         pthread_join(listTids[i], NULL);
     }
+
+    printf("[DEBUG ONLY] All threads closed!\n");
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
@@ -176,15 +176,12 @@ int main (int argc, char *argv[], char *envp[])
 
 
     size_t nBankOffices = atoi(argv[1]);
-    pthread_t *activeBankOfficesList = NULL;//AKA activeThreadsList; Thread id 1 => activeBankOfficesList[0];
-    //pthread_t activeBankOfficesList = malloc(sizeof(pthread_t) * nBankOffices);
+    pthread_t activeBankOfficesList[nBankOffices];//AKA activeThreadsList; Thread id 1 => activeBankOfficesList[0];
 
-    initializeBankOffices(nBankOffices, *activeBankOfficesList); //activeThreads created, running and tids loaded to activeBankOfficesList
+    initializeBankOffices(activeBankOfficesList, nBankOffices); //activeThreads created, running and tids loaded to activeBankOfficesList
     waitForAllThreads(activeBankOfficesList, nBankOffices);
 
 
-    //When server closes:
-    free(activeBankOfficesList);
 
     printf("Server's dead.\n");
     return 0;
