@@ -9,7 +9,7 @@
 #include <fcntl.h>
 
 // Account stuff ---------------------------------------------------------------------------------------------------------------------------------
-
+int serverLogFD;
 bank_account_t contasBancarias[MAX_BANK_ACCOUNTS];//Estrutura que guarda as contas bancarias
 
 void addBankAccount(bank_account_t acc)
@@ -115,6 +115,7 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 
     //Adding account
     addBankAccount(conta);
+    logAccountCreation(serverLogFD, 0, &conta);       //TODO ID DO THREAD
 
     //Debug only
     //printf("ID = <%d>\n", conta.account_id);
@@ -142,7 +143,7 @@ void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffice
     * 
     */
 
-    for(size_t i = 0; i < nBankOffices; i++)
+    for(size_t i = 1; i <= nBankOffices; i++)
     {
         pthread_t temp;
         pthread_create(&temp, NULL, threadFunc, NULL); //TODO: CHANGE FUNCTION (and args) OF THREADS
@@ -182,6 +183,21 @@ void closeFD(int fd)
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
+
+//Utility functions-------------------------------------------------------------------------------------------------------------------------------
+
+void initServer(char *argv[])
+{
+    serverLogFD = open(SERVER_LOGFILE, O_WRONLY | O_CREAT | O_TRUNC); //Cria o ficheiro de log do servidor
+
+    char password[MAX_PASSWORD_LEN];
+    memcpy(password, &argv[2][0], sizeof(argv[2]) - 2); //Retira aspas
+    password[MAX_PASSWORD_LEN] = '\0';
+
+    createAccount(ADMIN_ACCOUNT_ID, 0, password); //Cria conta do admin
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------
 int main (int argc, char *argv[], char *envp[])
 {
 
@@ -190,21 +206,17 @@ int main (int argc, char *argv[], char *envp[])
 
     printf("Server running!\n");
 
-    char password[MAX_PASSWORD_LEN];
-    memcpy(password, &argv[2][0], sizeof(argv[2]) - 2); //Retira aspas; TODO: FUNCAO?
-    password[MAX_PASSWORD_LEN] = '\0';
-
-    createAccount(ADMIN_ACCOUNT_ID, 0, password); //Cria conta do admin
-
+    initServer(argv);
 
     size_t nBankOffices = atoi(argv[1]);
-    pthread_t activeBankOfficesList[nBankOffices];//AKA activeThreadsList; Thread id 1 => activeBankOfficesList[0];
+    pthread_t activeBankOfficesList[nBankOffices + 1];//AKA activeThreadsList; Thread id 1 => activeBankOfficesList[1];
+    activeBankOfficesList[0] = pthread_self();//activeBankOfficesList[0] => main thread's tid
 
     initializeBankOffices(activeBankOfficesList, nBankOffices); //activeThreads created, running and tids loaded to activeBankOfficesList
     waitForAllThreads(activeBankOfficesList, nBankOffices);
 
 
-    //commented in order for the program not be stuck waiting for the user to write
+    //commented in order for the program not be stuck waiting for the user to write on FIFO
 
 
     //int fifoFD;
