@@ -1,10 +1,10 @@
 all: user server
 
 program1: user.c
-	gcc -wall -o user user.c
+	gcc -Wall -o user user.c
 
 program2: server.c
-	gcc -wall -o server server.c
+	gcc  server.c -o  server  -D_REENTRANT -lpthread -Wall
 
 clean:
 	-rm -f *.o
