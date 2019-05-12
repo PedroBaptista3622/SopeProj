@@ -31,6 +31,7 @@
 #define SERVER_FIFO_PATH "/tmp/secure_srv"
 #define USER_FIFO_PATH_PREFIX "/tmp/secure_"
 #define USER_FIFO_PATH_LEN (sizeof(USER_FIFO_PATH_PREFIX) + WIDTH_ID + 1)
+#define FIFO_READ_WRITE_ALL_PERM 0666
 
 #define FIFO_TIMEOUT_SECS 30
 

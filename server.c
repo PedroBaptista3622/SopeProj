@@ -4,6 +4,9 @@
 #include <string.h>
 #include <time.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // Account stuff ---------------------------------------------------------------------------------------------------------------------------------
 
@@ -122,14 +125,13 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
-//Bank Offices stuff:-----------------------------------------------------------------------------------------------------------------------------
+//Bank Offices stuff------------------------------------------------------------------------------------------------------------------------------
 
 //TODO: CHANGE FUNCTION (and args) OF THREADS
 void * threadFunc(void * arg)
 {
     return NULL;
 }
-
 
 void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffices)
 {
@@ -160,6 +162,26 @@ void waitForAllThreads(pthread_t listTids[], const size_t nBankOffices)
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
+
+//FIFO related functions--------------------------------------------------------------------------------------------------------------------------
+
+void initFIFO(char * path, mode_t mode)
+{
+    mkfifo(path, mode);
+}
+
+int initAndOpenFIFO(char * path, mode_t mode, int flags)
+{
+    initFIFO(path, mode);
+    return open(path, flags);
+}
+
+void closeFD(int fd)
+{
+    close(fd);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------
 int main (int argc, char *argv[], char *envp[])
 {
 
@@ -182,7 +204,16 @@ int main (int argc, char *argv[], char *envp[])
     waitForAllThreads(activeBankOfficesList, nBankOffices);
 
 
+    //commented in order for the program not be stuck waiting for the user to write
 
+
+    //int fifoFD;
+    //fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands; 
+    
+
+
+
+    //closeFD(fifoFD); //Should only be executed once the admin enters de command to end server.
     printf("Server's dead.\n");
     return 0;
 }
