@@ -1,7 +1,10 @@
-#include "sope.h"
 #include <stdlib.h>
 #include <string.h>
 
+#include "sope.h"
+
+// Funcao auxiliar pra separar words de uma string
+// adaptada de https://www.includehelp.com/code-snippets/c-program-to-split-string-into-the-words-separated-by-spaces.aspx
 int getWords(char *base, char target[10][20])
 {
     int n = 0, i, j = 0;
@@ -24,10 +27,10 @@ int getWords(char *base, char target[10][20])
     return n;
 }
 
-bool checkOperation(int argc, char *argv[]) {
-
+bool checkOperation(int argc, char *argv[])
+{
     // Check balance e End account
-     if (atoi(argv[4]) == 1 || atoi(argv[4]) == 3)
+    if (atoi(argv[4]) == 1 || atoi(argv[4]) == 3)
     {
         if (strlen(argv[5]) != 0)
         {
@@ -160,48 +163,76 @@ bool checkInputs(int argc, char *argv[])
         return false;
     }
 
-    return checkOperation(argc, argv);   
+    return checkOperation(argc, argv);
 }
 
 int main(int argc, char *argv[], char *envp[])
 {
+    // Check if inputs are valid
     if (!checkInputs(argc, argv))
         return 1;
 
-    int accountID = atoi(argv[1]);
-    char password[20];
-    strcpy(password, argv[2]);
-    int op_delay_ms = atoi(argv[3]);
-    int op_type = atoi(argv[4]);
+    // Open user logFile
+    FILE *logFile = fopen(USER_LOGFILE, "w");
 
-    // Criar conta
-    if (op_type == 0)
+    // Create tlv request header
+    req_header_t req_header;
+    req_header.pid = getpid();
+    req_header.account_id = atoi(argv[1]);
+    strcpy(req_header.password, argv[2]);
+    req_header.op_delay_ms = atoi(argv[3]);
+
+    // Create tlv request
+    tlv_request_t tlv_request;
+    tlv_request.type = (op_type_t)atoi(argv[4]);
+    tlv_request.value.header = req_header;
+    tlv_request.length = sizeof(tlv_request.value.header);
+
+    switch (tlv_request.type)
     {
-        char arr[10][20];
+    case OP_CREATE_ACCOUNT:
+    {
+        char arr[5][20];
         getWords(argv[5], arr);
 
-        int id_new_account = atoi(arr[0]);
-        int initial_balance = atoi(arr[1]);
-        char account_password[20];
-        strcpy(account_password, arr[2]);
+        tlv_request.value.create.account_id = atoi(arr[0]);
+        tlv_request.value.create.balance = atoi(arr[1]);
+        strcpy(tlv_request.value.create.password, arr[2]);
+
+        tlv_request.length += sizeof(tlv_request.value.create);
+
+        break;
     }
-    // Consulta de saldo
-    else if (op_type == 1)
+    case OP_BALANCE:
     {
+        break;
     }
-    // Transferencia
-    else if (op_type == 2)
+    case OP_TRANSFER:
     {
-        char arr[10][20];
+        char arr[5][20];
         getWords(argv[5], arr);
 
-        int id_desitnation_account = atoi(arr[0]);
-        int value = atoi(arr[1]);
+        tlv_request.value.transfer.account_id = atoi(arr[0]);
+        tlv_request.value.transfer.amount = atoi(arr[1]);
+
+        tlv_request.length += sizeof(tlv_request.value.transfer);
+
+        break;
     }
-    // Encerramento
-    else if (op_type == 3)
+    case OP_SHUTDOWN:
     {
+        break;
     }
+    default:
+        break;
+    }
+
+    // Crete user FIFO
+    char user_fifo_path[USER_FIFO_PATH_LEN];
+    sprintf(user_fifo_path, "%s%d", USER_FIFO_PATH_PREFIX, (int)getpid());
+    // mkfifo(user_fifo_path, 0750);
+
+    printf("fifo name %s\n", user_fifo_path);
 
     return 0;
 }
