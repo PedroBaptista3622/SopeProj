@@ -38,3 +38,5 @@
 
 #define PIPE_READ_END 0
 #define PIPE_WRITE_END 1
+
+#define MAX_REQUEST_QUEUE_LENGTH 512

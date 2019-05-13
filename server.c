@@ -8,13 +8,127 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
+int nThreadsWaitingForRequests = 0;
+
+//Request related functions-----------------------------------------------------------------------------------------------------------------------
+tlv_request_t requestQueue[MAX_REQUEST_QUEUE_LENGTH];
+int nCurrentWaitingRequests = 0;
+int firstQueueElement = 0;
+int rear = -1;
+
+tlv_request_t peekFirstQueueElement()
+{
+    pthread_mutex_lock(&mutex);
+    return requestQueue[firstQueueElement];
+    pthread_mutex_unlock(&mutex);
+}
+
+int getQueueSize()
+{
+    return nCurrentWaitingRequests;
+}
+
+bool isFull()
+{
+    return getQueueSize == MAX_REQUEST_QUEUE_LENGTH;
+}
+
+void addRequestToQueue(tlv_request_t request)
+{
+    pthread_mutex_lock(&mutex);
+
+    if(!isFull)
+    {
+        if(rear == MAX_REQUEST_QUEUE_LENGTH -1)
+        {
+            rear = -1;
+        }
+
+        requestQueue[++rear] = request;
+        nCurrentWaitingRequests++;
+    }
+
+    pthread_mutex_unlock(&mutex);
+    pthread_cond_signal(&requestAdded);
+}
+
+tlv_request_t getFirstQueueElement()
+{
+    pthread_mutex_lock(&mutex);
+
+    tlv_request_t request = requestQueue[firstQueueElement++];
+
+    if(firstQueueElement == MAX_REQUEST_QUEUE_LENGTH)
+    {
+        firstQueueElement = 0;
+    }
+
+    nCurrentWaitingRequests--;
+
+    pthread_mutex_unlock(&mutex);
+
+    return request;
+}
+
+void handleAccountCreation(tlv_request_t request)
+{
+    
+}
+
+void handleGetBalance(tlv_request_t request)
+{
+
+}
+
+void handleTransfer(tlv_request_t request)
+{
+
+}
+
+void handleShutDown(tlv_request_t request)
+{
+
+}
+
+void handleRequest(tlv_request_t request)
+{
+    switch (request.type)
+    {
+    case OP_CREATE_ACCOUNT:
+        handleAccountCreation(request);
+        break;
+    
+    case OP_BALANCE:
+        handleGetBalance(request);
+        break;
+
+    case OP_TRANSFER:
+        handleTransfer(request);
+        break;
+
+    case OP_SHUTDOWN:
+        handleShutDown(request);
+        break;
+    
+    default:
+        break;
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------
+
 // Account stuff ---------------------------------------------------------------------------------------------------------------------------------
 int serverLogFD;
 bank_account_t contasBancarias[MAX_BANK_ACCOUNTS];//Estrutura que guarda as contas bancarias
 
 void addBankAccount(bank_account_t acc)
 {
+    pthread_mutex_lock(&mutexAccounts);
     contasBancarias[acc.account_id] = acc;
+    pthread_mutex_unlock(&mutexAccounts);
 }
 
 int checkArgs(int argc, char *argv[])
@@ -131,6 +245,18 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 //TODO: CHANGE FUNCTION (and args) OF THREADS
 void * threadFunc(void * arg)
 {
+    while(1)
+    {
+        if(getQueueSize == 0)
+        {
+            nThreadsWaitingForRequests++;
+            pthread_cond_wait(&requestAdded, &mutex);
+        }
+
+        handleRequest(getFirstQueueElement);
+
+    }
+
     return NULL;
 }
 
@@ -147,6 +273,7 @@ void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffice
     {
         pthread_t temp;
         pthread_create(&temp, NULL, threadFunc, NULL); //TODO: CHANGE FUNCTION (and args) OF THREADS
+        logBankOfficeOpen(serverLogFD, i, temp);
         listBankOffices[i] = temp;
     }
 
@@ -184,6 +311,8 @@ void closeFD(int fd)
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+
 //Utility functions-------------------------------------------------------------------------------------------------------------------------------
 
 void initServer(char *argv[])
@@ -219,13 +348,17 @@ int main (int argc, char *argv[], char *envp[])
     //commented in order for the program not be stuck waiting for the user to write on FIFO
 
 
-    //int fifoFD;
-    //fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands; 
+    int fifoFD;
+    fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands; 
     
+    while(true) //TODO
+    {
+        tlv_request_t temp;
+        read(fifoFD, &temp, sizeof(temp)); //ERROR EBADF
+        
+    }
 
-
-
-    //closeFD(fifoFD); //Should only be executed once the admin enters de command to end server.
+    closeFD(fifoFD); //Should only be executed once the admin enters de command to end server.
     printf("Server's dead.\n");
     return 0;
 }
