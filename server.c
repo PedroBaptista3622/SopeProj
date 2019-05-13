@@ -13,7 +13,8 @@ pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
 int nThreadsWaitingForRequests = 0;
 
-//Request related functions-----------------------------------------------------------------------------------------------------------------------
+
+//Request / reply related functions-----------------------------------------------------------------------------------------------------------------------
 tlv_request_t requestQueue[MAX_REQUEST_QUEUE_LENGTH];
 int nCurrentWaitingRequests = 0;
 int firstQueueElement = 0;
@@ -73,9 +74,13 @@ tlv_request_t getFirstQueueElement()
     return request;
 }
 
-void handleAccountCreation(tlv_request_t request)
+void handleAccountCreation(tlv_request_t request)//TODO ID THREAD
 {
-    
+    if(request.value.header.account_id == ADMIN_ACCOUNT_ID)
+    {
+        createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password);
+        reply(request.value.header.pid, request.value.header.account_id, R_OK);
+    }             
 }
 
 void handleGetBalance(tlv_request_t request)
@@ -116,6 +121,19 @@ void handleRequest(tlv_request_t request)
     default:
         break;
     }
+}
+
+void reply(pid_t pid, uint32_t accID, int answer)
+{
+    char * fifoName = USER_FIFO_PATH_PREFIX;
+    strcat(fifoName, pid);
+    int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
+
+    rep_header_t temp;
+    temp.account_id = accID;
+    temp.ret_code = answer;
+
+    logReply(fifoFD, accID, &temp);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
@@ -209,7 +227,7 @@ char * getNewSaltNumber(int size)
 }
 
 //TODO: VERIFICAR DADOS CLIENTE?
-void createAccount(const uint32_t id, const uint32_t initialBalance, const char * passwordAdmin) //Assume que os valores estao dentro das normas
+void createAccount(const uint32_t id, const uint32_t initialBalance, const char * password) //Assume que os valores estao dentro das normas
 {
     bank_account_t conta;
     conta.account_id = id;
@@ -223,7 +241,7 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 
     //Password part
     char passHash[HASH_LEN + 1];
-    strcpy(passHash, getSha256sumOf(passwordAdmin));
+    strcpy(passHash, getSha256sumOf(password));
 
     strcpy(conta.hash, passHash);
 
@@ -237,6 +255,15 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
     //printf("Hash = <%s>\n", conta.hash);
     //printf("Salt = <%s>\n", conta.salt);
 }
+
+bool authenticate(const uint32_t accID, const char password[])
+{
+    char * strConcat = password;
+    strcat(strConcat, contasBancarias[accID].salt);
+    
+    return getSha256sumOf(strConcat) == contasBancarias[accID].hash;
+}
+
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -253,7 +280,7 @@ void * threadFunc(void * arg)
             pthread_cond_wait(&requestAdded, &mutex);
         }
 
-        handleRequest(getFirstQueueElement);
+        handleRequest(getFirstQueueElement());
 
     }
 
@@ -345,16 +372,24 @@ int main (int argc, char *argv[], char *envp[])
     waitForAllThreads(activeBankOfficesList, nBankOffices);
 
 
-    //commented in order for the program not be stuck waiting for the user to write on FIFO
-
 
     int fifoFD;
     fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands; 
     
-    while(true) //TODO
+    while(true)
     {
         tlv_request_t temp;
         read(fifoFD, &temp, sizeof(temp)); //ERROR EBADF
+
+        if(!authenticate(temp.value.header.account_id, temp.value.header.password))
+        {
+            reply(temp.value.header.pid, temp.value.header.account_id, RC_LOGIN_FAIL);
+            //TODO CLOSE FIFO?
+        }
+        else
+        {
+            addRequestToQueue(temp);
+        }
         
     }
 
