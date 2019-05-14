@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
+#include <errno.h>
 
 #include "sope.h"
 
@@ -260,6 +261,9 @@ int main(int argc, char *argv[], char *envp[])
     sprintf(pidChar, "%d", (int)getpid());
     strcat(USER_FIFO_PATH, pidChar);
 
+    printf("UserFIFOPath = <%s>\n", USER_FIFO_PATH);
+    printf("Sizeof->UserFIFOPath = <%ld>\n", sizeof(USER_FIFO_PATH));
+
     int userFIFO_fd;
 
     // Get reply from server
@@ -269,30 +273,50 @@ int main(int argc, char *argv[], char *envp[])
     time(&start);
     double elapsed_secs;
 
+    bool fifoOpened = 0;
+
     // Open user FIFO
-    do
+    while (elapsed_secs < FIFO_TIMEOUT_SECS)
     {
-        if ((userFIFO_fd = open(USER_FIFO_PATH, O_RDONLY)) == -1)
+        //errno = 0;
+        //printf("------------------------------------------------------\n");
+        //printf("Trying to open fifo for reading!\n");
+
+        if (fifoOpened || ((userFIFO_fd = open(USER_FIFO_PATH, O_RDONLY)) != -1))
         {
-            do
+            fifoOpened = true;
+            // printf("[User] UserFifo opened for reading!\n");
+
+            if(read(userFIFO_fd, &tlv_reply, sizeof(tlv_reply)) > 0)
             {
-                if (read(userFIFO_fd, &tlv_reply, sizeof(tlv_reply)))
-                    reply_received = true;
-                time(&end);
-                elapsed_secs = difftime(end, start);
-                sleep(1);
-            } while (!reply_received);
-            break;
+                reply_received = true;
+                printf("Request Read!\n");
+                break;
+            }
+
+            time(&end);
+            elapsed_secs = difftime(end, start);
         }
+        
+        
+        // printf("[User] UserFifo_fd = <%d>\n", userFIFO_fd);
+        // printf("[User] ErrNo = <%d>\n", errno);
+
+        // if(userFIFO_fd == -1)
+        //     perror("");
+
+        // printf("------------------------------------------------------\n");
+
         time(&end);
         elapsed_secs = difftime(end, start);
         sleep(1);
-    } while (elapsed_secs < FIFO_TIMEOUT_SECS);
+    }
 
     // If reply wasnt received in 30 secs
     if (!reply_received)
     {
         // Create the tlv reply
+        
         tlv_reply.type = (op_type_t)atoi(argv[4]);
         tlv_reply.value.header.account_id = atoi(argv[1]);
         tlv_reply.value.header.ret_code = RC_SRV_TIMEOUT;

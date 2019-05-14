@@ -86,7 +86,7 @@ tlv_reply_t getReplyFromRequest(tlv_request_t request)
     tlv_reply_t temp;
     temp.value.header.account_id = request.value.header.account_id;
     temp.type = request.type;
-    temp.length = request.length;
+    temp.length = sizeof(temp.value.header);
     printf("End\n");
     return temp;
 }
@@ -156,7 +156,7 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
         reply.value.header.ret_code = answer;
 
     logReply(fifoFD, pthread_self(), &reply);
-
+    printf("LogDONE\n");
     close(fifoFD);
 }
 
@@ -347,10 +347,11 @@ void initFIFO(char * path, mode_t mode)
     mkfifo(path, mode);
 }
 
+// int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
 int initAndOpenFIFO(char * path, mode_t mode, int flags)
 {
-    initFIFO(path, mode);
-    return open(path, flags);
+    initFIFO(path, FIFO_READ_WRITE_ALL_PERM);
+    return open(path, mode, flags);
 }
 
 void closeFD(int fd)
@@ -368,6 +369,7 @@ char * getUserFifoName(pid_t pid)
     strcat(fifoName, pidChar);
 
     printf("FifoName:<%s>\n", fifoName);
+    printf("Sizeof->UserFIFOPath = <%ld>\n", sizeof(fifoName));
     return fifoName;
 }
 
