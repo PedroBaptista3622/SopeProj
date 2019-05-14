@@ -263,39 +263,31 @@ int main(int argc, char *argv[], char *envp[])
     int userFIFO_fd;
 
     // Get reply from server
-    clock_t t_start, t_end;
-    t_start = clock();
-    double time_taken;
     bool reply_received = false;
 
+    time_t start, end;
+    time(&start);
+    double elapsed_secs;
+
+    // Open user FIFO
     do
     {
-        // Open user FIFO
         if ((userFIFO_fd = open(USER_FIFO_PATH, O_RDONLY)) == -1)
         {
-
             do
             {
-                printf("here2\n");
-
                 if (read(userFIFO_fd, &tlv_reply, sizeof(tlv_reply)))
-                {
-                    printf("here3\n");
-
                     reply_received = true;
-                    break;
-                }
-
-                t_end = clock() - t_start;
-                time_taken = ((double)t_end) / CLOCKS_PER_SEC;
+                time(&end);
+                elapsed_secs = difftime(end, start);
                 sleep(1);
             } while (!reply_received);
+            break;
         }
-        printf("here\n");
+        time(&end);
+        elapsed_secs = difftime(end, start);
         sleep(1);
-    } while (!reply_received);
-
-    //time_taken < FIFO_TIMEOUT_SECS
+    } while (elapsed_secs < FIFO_TIMEOUT_SECS);
 
     // If reply wasnt received in 30 secs
     if (!reply_received)
@@ -323,8 +315,13 @@ int main(int argc, char *argv[], char *envp[])
     // Close FIFOs
     close(userFIFO_fd);
 
+    printf("here\n");
+    printf("%d\n", tlv_reply.length);
+
     // Everything worked smoothly, write to log
     logReply(logFile_fd, getpid(), &tlv_reply);
+
+    printf("here\n");
 
     return 0;
 }
