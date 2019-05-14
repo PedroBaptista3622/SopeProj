@@ -239,7 +239,7 @@ int main(int argc, char *argv[], char *envp[])
     // Create user FIFO
     char USER_FIFO_PATH[USER_FIFO_PATH_LEN];
     sprintf(USER_FIFO_PATH, "%s%d", USER_FIFO_PATH_PREFIX, (int)getpid());
-    //mkfifo(USER_FIFO_PATH, 0750);
+    mkfifo(USER_FIFO_PATH, 0750);
 
     // Open server FIFO
     int serverFIFO_fd;
