@@ -12,6 +12,11 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
 int nThreadsWaitingForRequests = 0;
+int serverLogFD;
+
+void createAccount(const uint32_t id, const uint32_t initialBalance, const char * password);
+void reply(pid_t pid, uint32_t accID, int answer);
+int initAndOpenFIFO(char * path, mode_t mode, int flags);
 
 
 //Request / reply related functions-----------------------------------------------------------------------------------------------------------------------
@@ -34,14 +39,14 @@ int getQueueSize()
 
 bool isFull()
 {
-    return getQueueSize == MAX_REQUEST_QUEUE_LENGTH;
+    return getQueueSize() == MAX_REQUEST_QUEUE_LENGTH;
 }
 
 void addRequestToQueue(tlv_request_t request)
 {
     pthread_mutex_lock(&mutex);
 
-    if(!isFull)
+    if(!isFull())
     {
         if(rear == MAX_REQUEST_QUEUE_LENGTH -1)
         {
@@ -126,12 +131,25 @@ void handleRequest(tlv_request_t request)
 void reply(pid_t pid, uint32_t accID, int answer)
 {
     char * fifoName = USER_FIFO_PATH_PREFIX;
-    strcat(fifoName, pid);
+    char pidChar [6];
+    sprintf(pidChar, "%d", pid);
+
+    strcat(fifoName, pidChar);
     int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
 
-    rep_header_t temp;
-    temp.account_id = accID;
-    temp.ret_code = answer;
+    if(fifoFD == -1)
+    {
+        tlv_reply_t temp;
+        temp.value.header.account_id = accID;
+        temp.value.header.ret_code = RC_USR_DOWN;
+
+
+        logReply(serverLogFD, pthread_self(), &temp);
+    }
+
+    tlv_reply_t temp;
+    temp.value.header.account_id = accID;
+    temp.value.header.ret_code = answer;
 
     logReply(fifoFD, accID, &temp);
 }
@@ -139,7 +157,6 @@ void reply(pid_t pid, uint32_t accID, int answer)
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Account stuff ---------------------------------------------------------------------------------------------------------------------------------
-int serverLogFD;
 bank_account_t contasBancarias[MAX_BANK_ACCOUNTS];//Estrutura que guarda as contas bancarias
 
 void addBankAccount(bank_account_t acc)
@@ -247,7 +264,7 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 
     //Adding account
     addBankAccount(conta);
-    logAccountCreation(serverLogFD, 0, &conta);       //TODO ID DO THREAD
+    logAccountCreation(serverLogFD, pthread_self(), &conta);
 
     //Debug only
     //printf("ID = <%d>\n", conta.account_id);
@@ -258,7 +275,7 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 
 bool authenticate(const uint32_t accID, const char password[])
 {
-    char * strConcat = password;
+    char * strConcat = (char *) password;
     strcat(strConcat, contasBancarias[accID].salt);
     
     return getSha256sumOf(strConcat) == contasBancarias[accID].hash;
@@ -274,7 +291,7 @@ void * threadFunc(void * arg)
 {
     while(1)
     {
-        if(getQueueSize == 0)
+        if(getQueueSize() == 0)
         {
             nThreadsWaitingForRequests++;
             pthread_cond_wait(&requestAdded, &mutex);
@@ -374,7 +391,7 @@ int main (int argc, char *argv[], char *envp[])
 
 
     int fifoFD;
-    fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands; 
+    fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands;
     
     while(true)
     {
