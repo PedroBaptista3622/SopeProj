@@ -82,10 +82,12 @@ tlv_request_t getFirstQueueElement()
 
 tlv_reply_t getReplyFromRequest(tlv_request_t request)
 {
+    printf("Generating reply\n");
     tlv_reply_t temp;
     temp.value.header.account_id = request.value.header.account_id;
     temp.type = request.type;
     temp.length = request.length;
+    printf("End\n");
     return temp;
 }
 
@@ -142,7 +144,11 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
 {
     char * fifoName = getUserFifoName(pid);
 
+    printf("[DEBUG ONLY] fifoNameCreated\n");
+
     int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
+
+    printf("[DEBUG ONLY] fifoInit\n");
 
     if(fifoFD == -1)
         reply.value.header.ret_code = RC_USR_DOWN;        
@@ -354,11 +360,14 @@ void closeFD(int fd)
 
 char * getUserFifoName(pid_t pid)
 {
-    char * fifoName = USER_FIFO_PATH_PREFIX;
-    char pidChar [6];
+    printf("SFifoName\n");
+    char * fifoName = malloc(USER_FIFO_PATH_LEN);
+    strcpy(fifoName, USER_FIFO_PATH_PREFIX);
+    char pidChar [WIDTH_ID];
     sprintf(pidChar, "%d", pid);
     strcat(fifoName, pidChar);
 
+    printf("FifoName:<%s>\n", fifoName);
     return fifoName;
 }
 
@@ -370,7 +379,8 @@ char * getUserFifoName(pid_t pid)
 
 void initServer(char *argv[])
 {
-    serverLogFD = open(SERVER_LOGFILE, O_WRONLY | O_CREAT); //Cria o ficheiro de log do servidor
+    FILE * temp = fopen(SERVER_LOGFILE, "w");
+    serverLogFD = fileno(temp); //Cria o ficheiro de log do servidor
 
     createAccount(ADMIN_ACCOUNT_ID, 0, argv[2]); //Cria conta do admin
 }
