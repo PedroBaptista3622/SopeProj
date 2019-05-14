@@ -1,5 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <time.h>
 
 #include "sope.h"
 
@@ -173,7 +177,14 @@ int main(int argc, char *argv[], char *envp[])
         return 1;
 
     // Open user logFile
+    // TODO DAR APPEND DOS REGISTOS??
     FILE *logFile = fopen(USER_LOGFILE, "w");
+    int logFile_fd = fileno(logFile);
+
+    // Initialize tlv request and reply
+    tlv_request_t tlv_request;
+
+    tlv_reply_t tlv_reply;
 
     // Create tlv request header
     req_header_t req_header;
@@ -182,8 +193,6 @@ int main(int argc, char *argv[], char *envp[])
     strcpy(req_header.password, argv[2]);
     req_header.op_delay_ms = atoi(argv[3]);
 
-    // Create tlv request
-    tlv_request_t tlv_request;
     tlv_request.type = (op_type_t)atoi(argv[4]);
     tlv_request.value.header = req_header;
     tlv_request.length = sizeof(tlv_request.value.header);
@@ -227,12 +236,77 @@ int main(int argc, char *argv[], char *envp[])
         break;
     }
 
-    // Crete user FIFO
-    char user_fifo_path[USER_FIFO_PATH_LEN];
-    sprintf(user_fifo_path, "%s%d", USER_FIFO_PATH_PREFIX, (int)getpid());
-    // mkfifo(user_fifo_path, 0750);
+    // Create user FIFO
+    char USER_FIFO_PATH[USER_FIFO_PATH_LEN];
+    sprintf(USER_FIFO_PATH, "%s%d", USER_FIFO_PATH_PREFIX, (int)getpid());
+    //mkfifo(USER_FIFO_PATH, 0750);
 
-    printf("fifo name %s\n", user_fifo_path);
+    // Open server FIFO
+    int serverFIFO_fd;
+    if ((serverFIFO_fd = open(SERVER_FIFO_PATH, O_WRONLY)) == -1)
+    {
+        // Create the tlv reply
+        tlv_reply.type = (op_type_t)atoi(argv[4]);
+        tlv_reply.value.header.account_id = atoi(argv[1]);
+        tlv_reply.value.header.ret_code = RC_SRV_DOWN;
+        tlv_reply.length = sizeof(tlv_reply.value.header);
+        logReply(logFile_fd, getpid(), &tlv_reply);
+        return 1;
+    }
+
+    // Send info to server
+    write(serverFIFO_fd, &tlv_request, tlv_request.length);
+    logRequest(logFile_fd, getpid(), &tlv_request);
+
+    // Open user FIFO
+    int userFIFO_fd;
+    if ((userFIFO_fd = open(USER_FIFO_PATH, O_RDONLY)) == -1)
+    {
+        // Create the tlv reply
+        tlv_reply.type = (op_type_t)atoi(argv[4]);
+        tlv_reply.value.header.account_id = atoi(argv[1]);
+        tlv_reply.value.header.ret_code = RC_USR_DOWN;
+        tlv_reply.length = sizeof(tlv_reply.value.header);
+        logReply(logFile_fd, getpid(), &tlv_reply);
+        return 1;
+    }
+
+    // Get reply from server
+    clock_t t_start, t_end;
+    t_start = clock();
+    double time_taken;
+    bool reply_received = false;
+
+    do
+    {
+        if (read(userFIFO_fd, &tlv_reply, tlv_reply.length))
+        {
+            reply_received = true;
+            break;
+        }
+        t_end = clock() - t_start;
+        time_taken = ((double)t_end) / CLOCKS_PER_SEC;
+        sleep(1);
+    } while (time_taken < FIFO_TIMEOUT_SECS);
+
+    // Close FIFOs
+    close(serverFIFO_fd);
+    close(userFIFO_fd);
+
+    // If reply wasnt received in 30 secs
+    if (!reply_received)
+    {
+        // Create the tlv reply
+        tlv_reply.type = (op_type_t)atoi(argv[4]);
+        tlv_reply.value.header.account_id = atoi(argv[1]);
+        tlv_reply.value.header.ret_code = RC_SRV_TIMEOUT;
+        tlv_reply.length = sizeof(tlv_reply.value.header);
+        logReply(logFile_fd, getpid(), &tlv_reply);
+        return 1;
+    }
+
+    // Everything worked smoothly, write to log
+    logReply(logFile_fd, getpid(), &tlv_reply);
 
     return 0;
 }
