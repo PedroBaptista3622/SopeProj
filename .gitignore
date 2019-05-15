@@ -57,3 +57,7 @@ dkms.conf
 #!.vscode/tasks.json
 #!.vscode/launch.json
 #!.vscode/extensions.json
+
+#Txt Files
+ulog.txt
+slog.txt
