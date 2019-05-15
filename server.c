@@ -16,6 +16,11 @@ pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
 int nThreadsWaitingForRequests = 0;
 int serverLogFD;
 
+bank_account_t contasBancarias[MAX_BANK_ACCOUNTS]; //Estrutura que guarda as contas bancarias
+bool contaExistente[MAX_BANK_ACCOUNTS] = {false};
+
+//bool shuttingDown = false;
+
 void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password);
 void reply(pid_t pid, int answer, tlv_reply_t reply);
 
@@ -57,7 +62,7 @@ void addRequestToQueue(tlv_request_t request)
         nCurrentWaitingRequests++;
     }
 
-    printf("Request added\n");
+    //printf("Request added\n");
 
     pthread_mutex_unlock(&mutex);
     pthread_cond_signal(&requestAdded);
@@ -65,9 +70,9 @@ void addRequestToQueue(tlv_request_t request)
 
 tlv_request_t getFirstQueueElement()
 {
-    printf("B4 lock\n");
+    //printf("B4 lock\n");
     pthread_mutex_lock(&mutex);
-    printf("MutexLocked!\n");
+    //printf("MutexLocked!\n");
 
     tlv_request_t request = requestQueue[firstQueueElement++];
 
@@ -85,23 +90,27 @@ tlv_request_t getFirstQueueElement()
 
 tlv_reply_t getReplyFromRequest(tlv_request_t request)
 {
-    printf("Generating reply\n");
     tlv_reply_t temp;
     temp.value.header.account_id = request.value.header.account_id;
     temp.type = request.type;
-    //temp.length = sizeof(temp.value.header);
-    printf("End\n");
     return temp;
 }
 
-void handleAccountCreation(tlv_request_t request) //TODO ID THREAD
+void handleAccountCreation(tlv_request_t request)
 {
-    printf("Acc creation handler called\n");
-
     if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
     {
-        createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password);
-        reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
+
+        if(contaExistente[request.value.create.account_id] == true)
+        {
+            reply(request.value.header.pid, RC_ID_IN_USE, getReplyFromRequest(request));
+        }
+        else
+        {
+            createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password);
+            reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
+        }
+        
     }
     else
     {
@@ -112,40 +121,44 @@ void handleAccountCreation(tlv_request_t request) //TODO ID THREAD
 
 void handleGetBalance(tlv_request_t request)
 {
+    tlv_reply_t temp = getReplyFromRequest(request);
+    temp.value.balance.balance = contasBancarias[request.value.header.account_id].balance;
+
+    reply(request.value.header.pid, RC_OK, temp);
 }
 
 void handleTransfer(tlv_request_t request)
 {
+
 }
 
 void handleShutDown(tlv_request_t request)
 {
+
 }
 
 void handleRequest(tlv_request_t request)
 {
     switch (request.type)
     {
-    case OP_CREATE_ACCOUNT:
-        printf("Handle acc creation called\n");
-        handleAccountCreation(request);
-        break;
+        case OP_CREATE_ACCOUNT:
+            handleAccountCreation(request);
+            break;
 
-    case OP_BALANCE:
-        handleGetBalance(request);
-        break;
+        case OP_BALANCE:
+            handleGetBalance(request);
+            break;
 
-    case OP_TRANSFER:
-        handleTransfer(request);
-        break;
+        case OP_TRANSFER:
+            handleTransfer(request);
+            break;
 
-    case OP_SHUTDOWN:
-        handleShutDown(request);
-        break;
+        case OP_SHUTDOWN:
+            handleShutDown(request);
+            break;
 
-    default:
-        printf("Operation undefined!\n");
-        break;
+        default:
+            break;
     }
 }
 
@@ -153,11 +166,11 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
 {
     const char *fifoName = getUserFifoPath((int)pid);
 
-    printf("[DEBUG ONLY] fifoNameCreated\n");
+    //printf("[DEBUG ONLY] fifoNameCreated\n");
 
-    int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT); //TODO?
+    int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);
 
-    printf("[DEBUG ONLY] fifoInit\n");
+    //printf("[DEBUG ONLY] fifoInit\n");
 
     if (fifoFD == -1)
     {
@@ -172,23 +185,22 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
         // TODO
         // Foi preciso adicionar + 8, se nao nao dava
         // É preciso dps dar uma olhadela nisto
-        write(fifoFD, &reply, reply.length + 8);
+        write(fifoFD, &reply, sizeof(reply));
         close(fifoFD);
     }
 
     logReply(serverLogFD, pthread_self(), &reply);
-    printf("LogDONE\n");
+    //printf("LogDONE\n");
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Account stuff ---------------------------------------------------------------------------------------------------------------------------------
-bank_account_t contasBancarias[MAX_BANK_ACCOUNTS]; //Estrutura que guarda as contas bancarias
-
 void addBankAccount(bank_account_t acc)
 {
     pthread_mutex_lock(&mutexAccounts);
     contasBancarias[acc.account_id] = acc;
+    contaExistente[acc.account_id] = true;
     pthread_mutex_unlock(&mutexAccounts);
 }
 
@@ -231,6 +243,7 @@ bool authenticate(const uint32_t accID, const char *password)
 //TODO: CHANGE FUNCTION (and args) OF THREADS
 void *threadFunc(void *arg)
 {
+    //while (!shuttingDown && (getQueueSize() != 0))
     while (1)
     {
         printf("[Thread n %ld]", pthread_self());
@@ -257,7 +270,7 @@ void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffice
     * 
     * 
     */
-    printf("[Debug Only] Init banckOffices\n");
+    //printf("[Debug Only] Init banckOffices\n");
 
     for (size_t i = 1; i <= nBankOffices; i++)
     {
@@ -323,12 +336,12 @@ int main(int argc, char *argv[], char *envp[])
 
         if (!authenticate(temp.value.header.account_id, temp.value.header.password))
         {
-            printf("[Debug Only] Aut failed\n");
+            //printf("[Debug Only] Aut failed\n");
             reply(temp.value.header.pid, RC_LOGIN_FAIL, getReplyFromRequest(temp));
         }
         else
         {
-            printf("[Debug Only] Adding request\n");
+            //printf("[Debug Only] Adding request\n");
             addRequestToQueue(temp);
         }
     }
