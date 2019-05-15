@@ -6,10 +6,9 @@
 #include <time.h>
 #include <errno.h>
 
-#include "sope.h"
 #include "user_functions.h"
 
-int main(int argc, char *argv[], char *envp[])
+int main(int argc, char *argv[])
 {
     // Check if inputs are valid
     if (!checkInputs(argc, argv))

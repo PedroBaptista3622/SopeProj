@@ -1,4 +1,3 @@
-#include "sope.h"
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <string.h>
@@ -8,6 +7,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "server_functions.h"
+
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
@@ -16,8 +17,7 @@ int serverLogFD;
 
 void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password);
 void reply(pid_t pid, int answer, tlv_reply_t reply);
-int initAndOpenFIFO(char *path, mode_t mode, int flags);
-char *getUserFifoName(pid_t pid);
+int initAndOpenFIFO(const char *path, mode_t mode, int flags);
 
 //Request / reply related functions-----------------------------------------------------------------------------------------------------------------------
 tlv_request_t requestQueue[MAX_REQUEST_QUEUE_LENGTH];
@@ -138,7 +138,7 @@ void handleRequest(tlv_request_t request)
 
 void reply(pid_t pid, int answer, tlv_reply_t reply)
 {
-    char *fifoName = getUserFifoName(pid);
+    const char *fifoName = getUserFifoPath((int)pid);
 
     printf("[DEBUG ONLY] fifoNameCreated\n");
 
@@ -177,87 +177,6 @@ void addBankAccount(bank_account_t acc)
     pthread_mutex_lock(&mutexAccounts);
     contasBancarias[acc.account_id] = acc;
     pthread_mutex_unlock(&mutexAccounts);
-}
-
-int checkArgs(int argc, char *argv[])
-{
-    if (argc != 3)
-    {
-        printf("Usage: ./server <nBankOffices> \"<passwordAdmin>\"\n");
-        return 1;
-    }
-
-    int nBankOffices = atoi(argv[1]);
-    if (nBankOffices <= 0)
-    {
-        printf("Invalid nBanckOffices\n");
-        return 1;
-    }
-
-    if (nBankOffices > MAX_BANK_OFFICES)
-    {
-        printf("Too many bank offices!\n");
-        return 1;
-    }
-
-    return 0;
-}
-
-char *echoSha256sum(const char *password, const char *salt)
-{
-    FILE *temp;
-    char command[180]; //echo -n "<password><salt>" | sha256sum
-    char *resultado = malloc(HASH_LEN + 1);
-    char concatStrings[128];
-
-    strcpy(concatStrings, password);
-    strcat(concatStrings, salt);
-
-    strcpy(command, "echo -n ");
-    strcat(command, "\"");
-    strcat(command, concatStrings);
-    strcat(command, "\"");
-    strcat(command, "| sha256sum");
-
-    temp = popen(command, "r");
-    fgets(resultado, HASH_LEN + 1, temp);
-
-    //printf("[ECHO] Salt: <%s>\n", salt);
-    //printf("[ECHO] Hash: <%s>\n", resultado);
-
-    return resultado;
-}
-
-char *getSha256sumOf(const char *word)
-{
-    FILE *temp;
-    char command[180]; //echo -n "<word>" | sha256sum
-    char *resultado = malloc(65);
-
-    strcpy(command, "echo -n \"");
-    strcat(command, word);
-    strcat(command, "\"");
-    strcat(command, "| sha256sum");
-
-    temp = popen(command, "r");
-    fgets(resultado, 65, temp);
-    return resultado;
-}
-
-char *getNewSaltNumber(int size)
-{
-    char *salt = malloc(size);
-    char *availableChars = "0123456789abcdef";
-
-    srand((unsigned int)time(NULL) + getpid() * getppid());
-
-    for (size_t i = 0; i < size; i++)
-    {
-        salt[i] = availableChars[rand() % sizeof(availableChars)];
-        srand(rand());
-    }
-
-    return salt;
 }
 
 //TODO: VERIFICAR DADOS CLIENTE?
@@ -341,43 +260,6 @@ void waitForAllThreads(pthread_t listTids[], const size_t nBankOffices)
 
     //printf("[DEBUG ONLY] All threads closed!\n");
 }
-
-//------------------------------------------------------------------------------------------------------------------------------------------------
-
-//FIFO related functions--------------------------------------------------------------------------------------------------------------------------
-
-void initFIFO(char *path, mode_t mode)
-{
-    mkfifo(path, mode);
-}
-
-// int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
-int initAndOpenFIFO(char *path, mode_t mode, int flags)
-{
-    initFIFO(path, FIFO_READ_WRITE_ALL_PERM);
-    return open(path, mode, flags);
-}
-
-void closeFD(int fd)
-{
-    close(fd);
-}
-
-char *getUserFifoName(pid_t pid)
-{
-    printf("SFifoName\n");
-    char *fifoName = malloc(USER_FIFO_PATH_LEN);
-    strcpy(fifoName, USER_FIFO_PATH_PREFIX);
-    char pidChar[WIDTH_ID];
-    sprintf(pidChar, "%d", pid);
-    strcat(fifoName, pidChar);
-
-    printf("FifoName:<%s>\n", fifoName);
-    printf("Sizeof->UserFIFOPath = <%ld>\n", sizeof(fifoName));
-    return fifoName;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------------
 
 //Utility functions-------------------------------------------------------------------------------------------------------------------------------
 

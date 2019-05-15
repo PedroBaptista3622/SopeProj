@@ -1,35 +1,5 @@
 #include "user_functions.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <time.h>
-#include <errno.h>
-
-int getWords(char *base, char target[10][20])
-{
-    int n = 0, i, j = 0;
-
-    for (i = 0; 1; i++)
-    {
-        if (base[i] != ' ')
-        {
-            target[n][j++] = base[i];
-        }
-        else
-        {
-            target[n][j++] = '\0'; //insert NULL
-            n++;
-            j = 0;
-        }
-        if (base[i] == '\0')
-            break;
-    }
-    return n;
-}
-
 bool checkOperation(int argc, char *argv[])
 {
     // Check balance e End account
@@ -210,15 +180,4 @@ tlv_request_t createRequest(char *argv[])
     }
 
     return request;
-}
-
-const char * getUserFifoPath(int pid) {
-
-    char *USER_FIFO_PATH = malloc(USER_FIFO_PATH_LEN);
-    strcpy(USER_FIFO_PATH, USER_FIFO_PATH_PREFIX);
-    char pidChar[WIDTH_ID];
-    sprintf(pidChar, "%d", pid);
-    strcat(USER_FIFO_PATH, pidChar);
-
-    return USER_FIFO_PATH;
 }
