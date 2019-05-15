@@ -9,15 +9,15 @@
 
 #include "server_functions.h"
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //Used for request queue
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for waking "sleeping" threads, when a request is added
+pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER; //Used for the accounts array
 pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
 int nThreadsWaitingForRequests = 0;
 int serverLogFD;
 
 void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password);
 void reply(pid_t pid, int answer, tlv_reply_t reply);
-int initAndOpenFIFO(const char *path, mode_t mode, int flags);
 
 //Request / reply related functions-----------------------------------------------------------------------------------------------------------------------
 tlv_request_t requestQueue[MAX_REQUEST_QUEUE_LENGTH];
@@ -57,13 +57,17 @@ void addRequestToQueue(tlv_request_t request)
         nCurrentWaitingRequests++;
     }
 
+    printf("Request added\n");
+
     pthread_mutex_unlock(&mutex);
     pthread_cond_signal(&requestAdded);
 }
 
 tlv_request_t getFirstQueueElement()
 {
+    printf("B4 lock\n");
     pthread_mutex_lock(&mutex);
+    printf("MutexLocked!\n");
 
     tlv_request_t request = requestQueue[firstQueueElement++];
 
@@ -92,11 +96,18 @@ tlv_reply_t getReplyFromRequest(tlv_request_t request)
 
 void handleAccountCreation(tlv_request_t request) //TODO ID THREAD
 {
+    printf("Acc creation handler called\n");
+
     if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
     {
         createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password);
         reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
     }
+    else
+    {
+        reply(request.value.header.pid, RC_OP_NALLOW, getReplyFromRequest(request));
+    }
+    
 }
 
 void handleGetBalance(tlv_request_t request)
@@ -116,6 +127,7 @@ void handleRequest(tlv_request_t request)
     switch (request.type)
     {
     case OP_CREATE_ACCOUNT:
+        printf("Handle acc creation called\n");
         handleAccountCreation(request);
         break;
 
@@ -132,6 +144,7 @@ void handleRequest(tlv_request_t request)
         break;
 
     default:
+        printf("Operation undefined!\n");
         break;
     }
 }
@@ -220,12 +233,16 @@ void *threadFunc(void *arg)
 {
     while (1)
     {
+        printf("[Thread n %ld]", pthread_self());
+
         if (getQueueSize() == 0)
         {
+            printf("Queue Vazia!\n");
             nThreadsWaitingForRequests++;
-            pthread_cond_wait(&requestAdded, &mutex);
+            pthread_cond_wait(&requestAdded, &mutex2);
         }
 
+        printf("Queue n esta mais vazia, handler chamado\n");
         handleRequest(getFirstQueueElement());
     }
 

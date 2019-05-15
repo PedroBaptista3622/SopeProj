@@ -96,7 +96,6 @@ void initFIFO(const char *path, mode_t mode)
     mkfifo(path, mode);
 }
 
-// int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
 int initAndOpenFIFO(const char *path, mode_t mode, int flags)
 {
     initFIFO(path, FIFO_READ_WRITE_ALL_PERM);
