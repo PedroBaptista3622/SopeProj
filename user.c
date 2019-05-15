@@ -261,9 +261,6 @@ int main(int argc, char *argv[], char *envp[])
     sprintf(pidChar, "%d", (int)getpid());
     strcat(USER_FIFO_PATH, pidChar);
 
-    printf("UserFIFOPath = <%s>\n", USER_FIFO_PATH);
-    printf("Sizeof->UserFIFOPath = <%ld>\n", sizeof(USER_FIFO_PATH));
-
     int userFIFO_fd;
 
     // Get reply from server
@@ -278,34 +275,19 @@ int main(int argc, char *argv[], char *envp[])
     // Open user FIFO
     while (elapsed_secs < FIFO_TIMEOUT_SECS)
     {
-        //errno = 0;
-        //printf("------------------------------------------------------\n");
-        //printf("Trying to open fifo for reading!\n");
-
         if (fifoOpened || ((userFIFO_fd = open(USER_FIFO_PATH, O_RDONLY)) != -1))
         {
             fifoOpened = true;
-            // printf("[User] UserFifo opened for reading!\n");
 
-            if(read(userFIFO_fd, &tlv_reply, sizeof(tlv_reply)) > 0)
+            if (read(userFIFO_fd, &tlv_reply, sizeof(tlv_reply)) > 0)
             {
                 reply_received = true;
-                printf("Request Read!\n");
                 break;
             }
 
             time(&end);
             elapsed_secs = difftime(end, start);
         }
-        
-        
-        // printf("[User] UserFifo_fd = <%d>\n", userFIFO_fd);
-        // printf("[User] ErrNo = <%d>\n", errno);
-
-        // if(userFIFO_fd == -1)
-        //     perror("");
-
-        // printf("------------------------------------------------------\n");
 
         time(&end);
         elapsed_secs = difftime(end, start);
@@ -316,7 +298,6 @@ int main(int argc, char *argv[], char *envp[])
     if (!reply_received)
     {
         // Create the tlv reply
-        
         tlv_reply.type = (op_type_t)atoi(argv[4]);
         tlv_reply.value.header.account_id = atoi(argv[1]);
         tlv_reply.value.header.ret_code = RC_SRV_TIMEOUT;
@@ -325,27 +306,10 @@ int main(int argc, char *argv[], char *envp[])
         return 1;
     }
 
-    // if ((userFIFO_fd = open(USER_FIFO_PATH, O_RDONLY)) == -1)
-    // {
-    //     // Create the tlv reply
-    //     tlv_reply.type = (op_type_t)atoi(argv[4]);
-    //     tlv_reply.value.header.account_id = atoi(argv[1]);
-    //     tlv_reply.value.header.ret_code = RC_USR_DOWN;
-    //     tlv_reply.length = sizeof(tlv_reply.value.header);
-    //     logReply(logFile_fd, getpid(), &tlv_reply);
-    //     return 1;
-    // }
-
-    // Close FIFOs
-    close(userFIFO_fd);
-
-    printf("here\n");
-    printf("%d\n", tlv_reply.length);
-
     // Everything worked smoothly, write to log
     logReply(logFile_fd, getpid(), &tlv_reply);
 
-    printf("here\n");
+    printf("No problems!\n");
 
     return 0;
 }

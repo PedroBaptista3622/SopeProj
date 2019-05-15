@@ -14,11 +14,10 @@ pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
 int nThreadsWaitingForRequests = 0;
 int serverLogFD;
 
-void createAccount(const uint32_t id, const uint32_t initialBalance, const char * password);
+void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password);
 void reply(pid_t pid, int answer, tlv_reply_t reply);
-int initAndOpenFIFO(char * path, mode_t mode, int flags);
-char * getUserFifoName(pid_t pid);
-
+int initAndOpenFIFO(char *path, mode_t mode, int flags);
+char *getUserFifoName(pid_t pid);
 
 //Request / reply related functions-----------------------------------------------------------------------------------------------------------------------
 tlv_request_t requestQueue[MAX_REQUEST_QUEUE_LENGTH];
@@ -47,9 +46,9 @@ void addRequestToQueue(tlv_request_t request)
 {
     pthread_mutex_lock(&mutex);
 
-    if(!isFull())
+    if (!isFull())
     {
-        if(rear == MAX_REQUEST_QUEUE_LENGTH -1)
+        if (rear == MAX_REQUEST_QUEUE_LENGTH - 1)
         {
             rear = -1;
         }
@@ -68,7 +67,7 @@ tlv_request_t getFirstQueueElement()
 
     tlv_request_t request = requestQueue[firstQueueElement++];
 
-    if(firstQueueElement == MAX_REQUEST_QUEUE_LENGTH)
+    if (firstQueueElement == MAX_REQUEST_QUEUE_LENGTH)
     {
         firstQueueElement = 0;
     }
@@ -86,33 +85,30 @@ tlv_reply_t getReplyFromRequest(tlv_request_t request)
     tlv_reply_t temp;
     temp.value.header.account_id = request.value.header.account_id;
     temp.type = request.type;
-    temp.length = sizeof(temp.value.header);
+    //temp.length = sizeof(temp.value.header);
     printf("End\n");
     return temp;
 }
 
-void handleAccountCreation(tlv_request_t request)//TODO ID THREAD
+void handleAccountCreation(tlv_request_t request) //TODO ID THREAD
 {
-    if(request.value.header.account_id == ADMIN_ACCOUNT_ID)
+    if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
     {
         createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password);
         reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
-    }             
+    }
 }
 
 void handleGetBalance(tlv_request_t request)
 {
-
 }
 
 void handleTransfer(tlv_request_t request)
 {
-
 }
 
 void handleShutDown(tlv_request_t request)
 {
-
 }
 
 void handleRequest(tlv_request_t request)
@@ -122,7 +118,7 @@ void handleRequest(tlv_request_t request)
     case OP_CREATE_ACCOUNT:
         handleAccountCreation(request);
         break;
-    
+
     case OP_BALANCE:
         handleGetBalance(request);
         break;
@@ -134,7 +130,7 @@ void handleRequest(tlv_request_t request)
     case OP_SHUTDOWN:
         handleShutDown(request);
         break;
-    
+
     default:
         break;
     }
@@ -142,28 +138,39 @@ void handleRequest(tlv_request_t request)
 
 void reply(pid_t pid, int answer, tlv_reply_t reply)
 {
-    char * fifoName = getUserFifoName(pid);
+    char *fifoName = getUserFifoName(pid);
 
     printf("[DEBUG ONLY] fifoNameCreated\n");
 
-    int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
+    int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT); //TODO?
 
     printf("[DEBUG ONLY] fifoInit\n");
 
-    if(fifoFD == -1)
-        reply.value.header.ret_code = RC_USR_DOWN;        
+    if (fifoFD == -1)
+    {
+        reply.value.header.ret_code = RC_USR_DOWN;
+        reply.length = sizeof(reply.value.header);
+    }
     else
+    {
         reply.value.header.ret_code = answer;
+        reply.length = sizeof(reply.value.header);
+        
+        // TODO
+        // Foi preciso adicionar + 8, se nao nao dava
+        // É preciso dps dar uma olhadela nisto
+        write(fifoFD, &reply, reply.length + 8);
+        close(fifoFD);
+    }
 
-    logReply(fifoFD, pthread_self(), &reply);
+    logReply(serverLogFD, pthread_self(), &reply);
     printf("LogDONE\n");
-    close(fifoFD);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Account stuff ---------------------------------------------------------------------------------------------------------------------------------
-bank_account_t contasBancarias[MAX_BANK_ACCOUNTS];//Estrutura que guarda as contas bancarias
+bank_account_t contasBancarias[MAX_BANK_ACCOUNTS]; //Estrutura que guarda as contas bancarias
 
 void addBankAccount(bank_account_t acc)
 {
@@ -174,20 +181,20 @@ void addBankAccount(bank_account_t acc)
 
 int checkArgs(int argc, char *argv[])
 {
-    if(argc != 3)
+    if (argc != 3)
     {
         printf("Usage: ./server <nBankOffices> \"<passwordAdmin>\"\n");
         return 1;
     }
 
     int nBankOffices = atoi(argv[1]);
-    if(nBankOffices <= 0)
+    if (nBankOffices <= 0)
     {
         printf("Invalid nBanckOffices\n");
         return 1;
     }
 
-    if(nBankOffices > MAX_BANK_OFFICES)
+    if (nBankOffices > MAX_BANK_OFFICES)
     {
         printf("Too many bank offices!\n");
         return 1;
@@ -196,12 +203,12 @@ int checkArgs(int argc, char *argv[])
     return 0;
 }
 
-char * echoSha256sum (const char * password, const char * salt)
+char *echoSha256sum(const char *password, const char *salt)
 {
-    FILE * temp;
+    FILE *temp;
     char command[180]; //echo -n "<password><salt>" | sha256sum
-    char * resultado = malloc(HASH_LEN + 1);
-    char concatStrings [128];
+    char *resultado = malloc(HASH_LEN + 1);
+    char concatStrings[128];
 
     strcpy(concatStrings, password);
     strcat(concatStrings, salt);
@@ -221,11 +228,11 @@ char * echoSha256sum (const char * password, const char * salt)
     return resultado;
 }
 
-char * getSha256sumOf (const char * word)
+char *getSha256sumOf(const char *word)
 {
-    FILE * temp;
+    FILE *temp;
     char command[180]; //echo -n "<word>" | sha256sum
-    char * resultado = malloc(65);
+    char *resultado = malloc(65);
 
     strcpy(command, "echo -n \"");
     strcat(command, word);
@@ -237,14 +244,14 @@ char * getSha256sumOf (const char * word)
     return resultado;
 }
 
-char * getNewSaltNumber(int size)
+char *getNewSaltNumber(int size)
 {
-    char * salt = malloc(size);
-    char * availableChars = "0123456789abcdef";
+    char *salt = malloc(size);
+    char *availableChars = "0123456789abcdef";
 
-    srand((unsigned int) time(NULL) + getpid()*getppid());
+    srand((unsigned int)time(NULL) + getpid() * getppid());
 
-    for(size_t i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
     {
         salt[i] = availableChars[rand() % sizeof(availableChars)];
         srand(rand());
@@ -254,7 +261,7 @@ char * getNewSaltNumber(int size)
 }
 
 //TODO: VERIFICAR DADOS CLIENTE?
-void createAccount(const uint32_t id, const uint32_t initialBalance, const char * password) //Assume que os valores estao dentro das normas
+void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password) //Assume que os valores estao dentro das normas
 {
     bank_account_t conta;
     conta.account_id = id;
@@ -280,29 +287,27 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
     //printf("Salt = <%s>\n", conta.salt);
 }
 
-bool authenticate(const uint32_t accID, const char * password)
+bool authenticate(const uint32_t accID, const char *password)
 {
     return (strcmp(echoSha256sum(password, contasBancarias[accID].salt), contasBancarias[accID].hash) == 0);
 }
-
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
 //Bank Offices stuff------------------------------------------------------------------------------------------------------------------------------
 
 //TODO: CHANGE FUNCTION (and args) OF THREADS
-void * threadFunc(void * arg)
+void *threadFunc(void *arg)
 {
-    while(1)
+    while (1)
     {
-        if(getQueueSize() == 0)
+        if (getQueueSize() == 0)
         {
             nThreadsWaitingForRequests++;
             pthread_cond_wait(&requestAdded, &mutex);
         }
 
         handleRequest(getFirstQueueElement());
-
     }
 
     return NULL;
@@ -316,21 +321,20 @@ void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffice
     * 
     * 
     */
-     printf("[Debug Only] Init banckOffices\n");
+    printf("[Debug Only] Init banckOffices\n");
 
-    for(size_t i = 1; i <= nBankOffices; i++)
+    for (size_t i = 1; i <= nBankOffices; i++)
     {
         pthread_t temp;
         pthread_create(&temp, NULL, threadFunc, NULL); //TODO: CHANGE FUNCTION (and args) OF THREADS
         logBankOfficeOpen(serverLogFD, i, temp);
         listBankOffices[i] = temp;
     }
-
 }
 
 void waitForAllThreads(pthread_t listTids[], const size_t nBankOffices)
 {
-    for(size_t i = 0; i < nBankOffices; i++)
+    for (size_t i = 0; i < nBankOffices; i++)
     {
         pthread_join(listTids[i], NULL);
     }
@@ -342,13 +346,13 @@ void waitForAllThreads(pthread_t listTids[], const size_t nBankOffices)
 
 //FIFO related functions--------------------------------------------------------------------------------------------------------------------------
 
-void initFIFO(char * path, mode_t mode)
+void initFIFO(char *path, mode_t mode)
 {
     mkfifo(path, mode);
 }
 
 // int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);   //TODO?
-int initAndOpenFIFO(char * path, mode_t mode, int flags)
+int initAndOpenFIFO(char *path, mode_t mode, int flags)
 {
     initFIFO(path, FIFO_READ_WRITE_ALL_PERM);
     return open(path, mode, flags);
@@ -359,12 +363,12 @@ void closeFD(int fd)
     close(fd);
 }
 
-char * getUserFifoName(pid_t pid)
+char *getUserFifoName(pid_t pid)
 {
     printf("SFifoName\n");
-    char * fifoName = malloc(USER_FIFO_PATH_LEN);
+    char *fifoName = malloc(USER_FIFO_PATH_LEN);
     strcpy(fifoName, USER_FIFO_PATH_PREFIX);
-    char pidChar [WIDTH_ID];
+    char pidChar[WIDTH_ID];
     sprintf(pidChar, "%d", pid);
     strcat(fifoName, pidChar);
 
@@ -375,32 +379,30 @@ char * getUserFifoName(pid_t pid)
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-
 //Utility functions-------------------------------------------------------------------------------------------------------------------------------
 
 void initServer(char *argv[])
 {
-    FILE * temp = fopen(SERVER_LOGFILE, "w");
+    FILE *temp = fopen(SERVER_LOGFILE, "w");
     serverLogFD = fileno(temp); //Cria o ficheiro de log do servidor
 
     createAccount(ADMIN_ACCOUNT_ID, 0, argv[2]); //Cria conta do admin
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
-int main (int argc, char *argv[], char *envp[])
+int main(int argc, char *argv[], char *envp[])
 {
 
-    if(checkArgs(argc, argv)) //This func returns 1 if there's any problem with the arguments
-        return 1;             //If that happens, the program closes.
+    if (checkArgs(argc, argv)) //This func returns 1 if there's any problem with the arguments
+        return 1;              //If that happens, the program closes.
 
     printf("Server running!\n");
 
     initServer(argv);
 
     size_t nBankOffices = atoi(argv[1]);
-    pthread_t activeBankOfficesList[nBankOffices + 1];//AKA activeThreadsList; Thread id 1 => activeBankOfficesList[1];
-    activeBankOfficesList[0] = pthread_self();//activeBankOfficesList[0] => main thread's tid
+    pthread_t activeBankOfficesList[nBankOffices + 1]; //AKA activeThreadsList; Thread id 1 => activeBankOfficesList[1];
+    activeBankOfficesList[0] = pthread_self();         //activeBankOfficesList[0] => main thread's tid
 
     initializeBankOffices(activeBankOfficesList, nBankOffices); //activeThreads created, running and tids loaded to activeBankOfficesList
 
@@ -408,10 +410,10 @@ int main (int argc, char *argv[], char *envp[])
 
     int fifoFD;
     fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands;
-    
-   //printf("[Debug Only] Fifo Opened\n");
 
-    while(true)
+    //printf("[Debug Only] Fifo Opened\n");
+
+    while (true)
     {
         //printf("[Debug Only] Reading requests\n");
 
@@ -420,7 +422,7 @@ int main (int argc, char *argv[], char *envp[])
 
         //printf("[Debug Only] Request read\n");
 
-        if(!authenticate(temp.value.header.account_id, temp.value.header.password))
+        if (!authenticate(temp.value.header.account_id, temp.value.header.password))
         {
             printf("[Debug Only] Aut failed\n");
             reply(temp.value.header.pid, RC_LOGIN_FAIL, getReplyFromRequest(temp));
@@ -430,7 +432,6 @@ int main (int argc, char *argv[], char *envp[])
             printf("[Debug Only] Adding request\n");
             addRequestToQueue(temp);
         }
-        
     }
 
     waitForAllThreads(activeBankOfficesList, nBankOffices);
