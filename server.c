@@ -9,17 +9,20 @@
 
 #include "server_functions.h"
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;         //Used for request queue
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;        //Used for waking "sleeping" threads, when a request is added
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //Used for request queue
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for waking "sleeping" threads, when a request is added
+pthread_mutex_t mutexWaitingThreads = PTHREAD_MUTEX_INITIALIZER; //Used for controlling the nThreadsWaitingForRequests writes
+
 pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER; //Used for the accounts array
 pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
+
 int nThreadsWaitingForRequests = 0;
 int serverLogFD;
 
 bank_account_t contasBancarias[MAX_BANK_ACCOUNTS]; //Estrutura que guarda as contas bancarias
 bool contaExistente[MAX_BANK_ACCOUNTS] = {false};
 
-//bool shuttingDown = false;
+bool shuttingDown = false;
 
 void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password);
 void reply(pid_t pid, int answer, tlv_reply_t reply);
@@ -268,23 +271,43 @@ bool authenticate(const uint32_t accID, const char *password)
 //TODO: CHANGE FUNCTION (and args) OF THREADS
 void *threadFunc(void *arg)
 {
-    //while (!shuttingDown && (getQueueSize() != 0))
-    while (1)
-    {
-        printf("[Thread n %ld]", pthread_self());
 
+    while (!shuttingDown || (getQueueSize() != 0)) //Deixa de executar qnd shuttingDown = true && QueueSize = 0
+    {
         if (getQueueSize() == 0)
         {
-            printf("Queue Vazia!\n");
+            //printf("Queue Vazia!\n");
+
+            printf("[Thread n %ld ] - LOCK mutexWaitingThreads\n", pthread_self());
+            pthread_mutex_lock(&mutexWaitingThreads);
             nThreadsWaitingForRequests++;
+            pthread_mutex_unlock(&mutexWaitingThreads);
+            printf("[Thread n %ld ] - UNLOCK mutexWaitingThreads\n", pthread_self());
+
+            printf("[Thread n %ld ] - SLEEP mutexWaitingThreads\n", pthread_self());
             pthread_cond_wait(&requestAdded, &mutex2);
+            printf("[Thread n %ld ] - WAKE mutexWaitingThreads\n", pthread_self());
+
+            printf("[Thread n %ld ] - LOCK mutexWaitingThreads\n", pthread_self());
+            pthread_mutex_lock(&mutexWaitingThreads);
+            nThreadsWaitingForRequests--;
+            pthread_mutex_unlock(&mutexWaitingThreads);
+            printf("[Thread n %ld ] - UNLOCK mutexWaitingThreads\n", pthread_self());
         }
 
-        printf("Queue n esta mais vazia, handler chamado\n");
-        handleRequest(getFirstQueueElement());
+
+        if(getQueueSize() > 0)
+        {
+            //printf("Queue n esta mais vazia, handler chamado\n");
+            handleRequest(getFirstQueueElement());
+        }
     }
 
+    //printf("Thread %ld Dead\n", pthread_self());
+    write(STDOUT_FILENO, "Dead\n", 6);
+    //pthread_cond_broadcast(&requestAdded);
     return NULL;
+    //pthread_exit(NULL);
 }
 
 void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffices)
@@ -306,14 +329,22 @@ void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffice
     }
 }
 
-void waitForAllThreads(pthread_t listTids[], const size_t nBankOffices)
+void waitForAllThreads(pthread_t listTids[], size_t nBankOffices)
 {
-    for (size_t i = 0; i < nBankOffices; i++)
+    while(nThreadsWaitingForRequests != nBankOffices) //Waits for the threads to finish their work
     {
-        pthread_join(listTids[i], NULL);
+        sleep(1);
     }
+    
+    pthread_cond_broadcast(&requestAdded); //This should unblock all the threads... Not working *-*
 
-    //printf("[DEBUG ONLY] All threads closed!\n");
+
+    // for (size_t i = 1; i <= nBankOffices; i++)
+    // {
+    //     printf("Waiting for %ld\n", listTids[i]);
+    //     pthread_join(listTids[i], NULL);
+    // }
+
 }
 
 //Utility functions-------------------------------------------------------------------------------------------------------------------------------
@@ -333,7 +364,7 @@ int main(int argc, char *argv[], char *envp[])
     if (checkArgs(argc, argv)) //This func returns 1 if there's any problem with the arguments
         return 1;              //If that happens, the program closes.
 
-    printf("Server running!\n");
+    printf("[Server] Starting!\n");
 
     initServer(argv);
 
@@ -350,7 +381,7 @@ int main(int argc, char *argv[], char *envp[])
 
     //printf("[Debug Only] Fifo Opened\n");
 
-    while (true)
+    while (!shuttingDown)
     {
         //printf("[Debug Only] Reading requests\n");
 
@@ -368,13 +399,33 @@ int main(int argc, char *argv[], char *envp[])
         }
         else
         {
-            //printf("[Debug Only] Adding request\n");
-            addRequestToQueue(temp);
+            if(temp.type == OP_SHUTDOWN) //Neste sitio, o user ja se encontra autenticado
+            {
+                if(temp.value.header.account_id == ADMIN_ACCOUNT_ID)
+                {
+                    shuttingDown = true;
+                    printf("ShuttingDown enabled!\n");
+
+                    tlv_reply_t tempRep = getReplyFromRequest(temp);
+                    tempRep.value.shutdown.active_offices = nBankOffices - nThreadsWaitingForRequests; 
+                    reply(temp.value.header.pid, RC_OK, tempRep);
+                }
+                else
+                {
+                    printf("Try to shutdown without permitins\n");
+                    tlv_reply_t tempRep = getReplyFromRequest(temp);
+                    tempRep.value.shutdown.active_offices = 0; 
+                    reply(temp.value.header.pid, RC_OP_NALLOW, tempRep);
+                }
+                
+            }
+            else
+                addRequestToQueue(temp);
         }
     }
 
     waitForAllThreads(activeBankOfficesList, nBankOffices);
     closeFD(fifoFD); //Should only be executed once the admin enters de command to end server.
-    printf("Server's dead.\n");
+    printf("[Server] End.\n");
     return 0;
 }
