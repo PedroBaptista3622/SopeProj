@@ -1,10 +1,10 @@
-all: user server
+xpto: user server
 
-program1: user.c
-	gcc -Wall -o user user.c
+user:
+	gcc -Wall -o user user.c log.c user_functions.c aux_functions.c
 
-program2: server.c
-	gcc  server.c -o  server  -D_REENTRANT -lpthread -Wall
+server:
+	gcc server.c log.c aux_functions.c server_functions.c -o server -D_REENTRANT -lpthread -Wall
 
 clean:
 	-rm -f *.o
