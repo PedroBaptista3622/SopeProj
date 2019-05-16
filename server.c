@@ -277,8 +277,9 @@ void *threadFunc(void *arg)
         }
     }
 
-    printf("Thread %ld Dead\n", pthread_self());
-    pthread_cond_broadcast(&requestAdded);
+    //printf("Thread %ld Dead\n", pthread_self());
+    write(STDOUT_FILENO, "Dead\n", 6);
+    //pthread_cond_broadcast(&requestAdded);
     return NULL;
     //pthread_exit(NULL);
 }
@@ -311,7 +312,6 @@ void waitForAllThreads(pthread_t listTids[], size_t nBankOffices)
     
     pthread_cond_broadcast(&requestAdded); //This should unblock all the threads... Not working *-*
 
-    //Commented in order for the server to actully close... Not waiting for all threads
 
     // for (size_t i = 1; i <= nBankOffices; i++)
     // {
@@ -319,7 +319,6 @@ void waitForAllThreads(pthread_t listTids[], size_t nBankOffices)
     //     pthread_join(listTids[i], NULL);
     // }
 
-    //printf("[DEBUG ONLY] All threads closed!\n");
 }
 
 //Utility functions-------------------------------------------------------------------------------------------------------------------------------
@@ -339,7 +338,7 @@ int main(int argc, char *argv[], char *envp[])
     if (checkArgs(argc, argv)) //This func returns 1 if there's any problem with the arguments
         return 1;              //If that happens, the program closes.
 
-    printf("Server running!\n");
+    printf("[Server] Starting!\n");
 
     initServer(argv);
 
@@ -397,10 +396,8 @@ int main(int argc, char *argv[], char *envp[])
         }
     }
 
-    printf("Cheguei ca!\n");
-
     waitForAllThreads(activeBankOfficesList, nBankOffices);
     closeFD(fifoFD); //Should only be executed once the admin enters de command to end server.
-    printf("Server's dead.\n");
+    printf("[Server] End.\n");
     return 0;
 }
