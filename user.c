@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
     request = createRequest(argv);
     // TO DO
     // O msm que no server, sem o + 8 nao envia toda a informcao
-    write(serverFIFO_fd, &request, request.length);
+    write(serverFIFO_fd, &request, sizeof(request));
     logRequest(logFile_fd, getpid(), &request);
 
     // User FIFO path
