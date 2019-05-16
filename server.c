@@ -205,10 +205,6 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
             reply.length += reply.value.transfer.balance;
             break;
 
-        case OP_BALANCE:
-            reply.value.transfer.balance = 0;
-            reply.length += reply.value.transfer.balance;
-            break;
         default:
             break;
         }
