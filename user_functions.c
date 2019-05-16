@@ -70,7 +70,7 @@ bool checkOperation(int argc, char *argv[])
         // Value
         if (atoi(arr[1]) > MAX_BALANCE || atoi(arr[1]) < MIN_BALANCE)
         {
-            printf("Initial balance must be between 1 and 1000000000\n");
+            printf("Ammount must be between 1 and 1000000000\n");
             return false;
         }
     }
@@ -138,11 +138,8 @@ tlv_request_t createRequest(char *argv[])
 
     request.type = (op_type_t)atoi(argv[4]);
     request.value.header = request_header;
-    printf("0.1 Size of value tranfer: %d\n", request.length);
     request.length = sizeof(request.value.header);
-    printf("0.2 Size of value tranfer: %d\n", request.length);
     request.length += sizeof(request.type);
-    printf("0.3 Size of value tranfer: %d\n", request.length);
 
     switch (request.type)
     {
@@ -168,12 +165,10 @@ tlv_request_t createRequest(char *argv[])
         char arr[5][20];
         getWords(argv[5], arr);
 
-        printf("1 Size of value tranfer: %d\n", request.length);
         request.value.transfer.account_id = atoi(arr[0]);
         request.value.transfer.amount = atoi(arr[1]);
 
         request.length += sizeof(request.value.transfer);
-        printf("2 Size of value tranfer: %d\n", request.length);
 
         break;
     }

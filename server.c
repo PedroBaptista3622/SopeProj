@@ -11,6 +11,7 @@
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //Used for request queue
 //pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for waking "sleeping" threads, when a request is added
+
 pthread_mutex_t mutexWaitingThreads = PTHREAD_MUTEX_INITIALIZER; //Used for controlling the nThreadsWaitingForRequests writes
 
 pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER; //Used for the accounts array
@@ -114,10 +115,15 @@ void handleAccountCreation(tlv_request_t request)
 
 void handleGetBalance(tlv_request_t request)
 {
-    tlv_reply_t temp = getReplyFromRequest(request);
-    temp.value.balance.balance = contasBancarias[request.value.header.account_id].balance;
+    if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
+        reply(request.value.header.pid, RC_OP_NALLOW, getReplyFromRequest(request));
+    else
+    {
+        tlv_reply_t temp = getReplyFromRequest(request);
+        temp.value.balance.balance = contasBancarias[request.value.header.account_id].balance;
 
-    reply(request.value.header.pid, RC_OK, temp);
+        reply(request.value.header.pid, RC_OK, temp);
+    }
 }
 
 void handleTransfer(tlv_request_t request)
@@ -126,7 +132,7 @@ void handleTransfer(tlv_request_t request)
     if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
         reply(request.value.header.pid, RC_OP_NALLOW, getReplyFromRequest(request));
     else if (contaExistente[request.value.transfer.account_id] == false)
-        reply(request.value.header.pid, RC_ID_IN_USE, getReplyFromRequest(request));
+        reply(request.value.header.pid, RC_ID_NOT_FOUND, getReplyFromRequest(request));
     else if (request.value.header.account_id == request.value.transfer.account_id)
         reply(request.value.header.pid, RC_SAME_ID, getReplyFromRequest(request));
     else if (contasBancarias[request.value.header.account_id].balance - request.value.transfer.amount < MIN_BALANCE)
@@ -196,6 +202,11 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
         {
         case OP_TRANSFER:
             reply.value.transfer.balance = contasBancarias[reply.value.header.account_id].balance;
+            reply.length += reply.value.transfer.balance;
+            break;
+
+        case OP_BALANCE:
+            reply.value.transfer.balance = 0;
             reply.length += reply.value.transfer.balance;
             break;
         default:
@@ -284,6 +295,7 @@ void *threadFunc(void *arg)
             pthread_mutex_unlock(&mutexWaitingThreads);
         }
 
+
         if(getQueueSize() > 0)
             handleRequest(getFirstQueueElement());
 
@@ -316,20 +328,18 @@ void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffice
 
 void waitForAllThreads(pthread_t listTids[], size_t nBankOffices)
 {
-    while(nThreadsWaitingForRequests != nBankOffices) //Waits for the threads to finish their work
+    while (nThreadsWaitingForRequests != nBankOffices) //Waits for the threads to finish their work
     {
         sleep(1);
     }
-    
-    pthread_cond_broadcast(&requestAdded); //This should unblock all the threads... Not working *-*
 
+    pthread_cond_broadcast(&requestAdded); //This should unblock all the threads... Not working *-*
 
     for (size_t i = 1; i <= nBankOffices; i++)
     {
         printf("Waiting for %ld\n", listTids[i]);
         pthread_join(listTids[i], NULL);
     }
-
 }
 
 //Utility functions-------------------------------------------------------------------------------------------------------------------------------
@@ -384,15 +394,15 @@ int main(int argc, char *argv[], char *envp[])
         }
         else
         {
-            if(temp.type == OP_SHUTDOWN) //Neste sitio, o user ja se encontra autenticado
+            if (temp.type == OP_SHUTDOWN) //Neste sitio, o user ja se encontra autenticado
             {
-                if(temp.value.header.account_id == ADMIN_ACCOUNT_ID)
+                if (temp.value.header.account_id == ADMIN_ACCOUNT_ID)
                 {
                     shuttingDown = true;
                     printf("ShuttingDown enabled!\n");
 
                     tlv_reply_t tempRep = getReplyFromRequest(temp);
-                    tempRep.value.shutdown.active_offices = nBankOffices - nThreadsWaitingForRequests; 
+                    tempRep.value.shutdown.active_offices = nBankOffices - nThreadsWaitingForRequests;
                     reply(temp.value.header.pid, RC_OK, tempRep);
                 }
                 else
@@ -402,7 +412,6 @@ int main(int argc, char *argv[], char *envp[])
                     tempRep.value.shutdown.active_offices = 0;
                     reply(temp.value.header.pid, RC_OP_NALLOW, tempRep);
                 }
-                
             }
             else
             {
