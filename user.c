@@ -34,6 +34,8 @@ int main(int argc, char *argv[])
 
     // Send rqeuest to server
     request = createRequest(argv);
+    // TO DO
+    // O msm que no server, sem o + 8 nao envia toda a informcao
     write(serverFIFO_fd, &request, request.length);
     logRequest(logFile_fd, getpid(), &request);
 
@@ -48,7 +50,6 @@ int main(int argc, char *argv[])
     int userFIFO_fd;
     bool fifoOpened = false;
     bool reply_received = false;
-
 
     // Get reply from server
     while (elapsed_secs < FIFO_TIMEOUT_SECS)

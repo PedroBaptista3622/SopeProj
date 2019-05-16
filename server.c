@@ -9,8 +9,8 @@
 
 #include "server_functions.h"
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //Used for request queue
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for waking "sleeping" threads, when a request is added
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;         //Used for request queue
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;        //Used for waking "sleeping" threads, when a request is added
 pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER; //Used for the accounts array
 pthread_cond_t requestAdded = PTHREAD_COND_INITIALIZER;
 int nThreadsWaitingForRequests = 0;
@@ -101,7 +101,7 @@ void handleAccountCreation(tlv_request_t request)
     if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
     {
 
-        if(contaExistente[request.value.create.account_id] == true)
+        if (contaExistente[request.value.create.account_id] == true)
         {
             reply(request.value.header.pid, RC_ID_IN_USE, getReplyFromRequest(request));
         }
@@ -110,13 +110,11 @@ void handleAccountCreation(tlv_request_t request)
             createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password);
             reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
         }
-        
     }
     else
     {
         reply(request.value.header.pid, RC_OP_NALLOW, getReplyFromRequest(request));
     }
-    
 }
 
 void handleGetBalance(tlv_request_t request)
@@ -129,36 +127,53 @@ void handleGetBalance(tlv_request_t request)
 
 void handleTransfer(tlv_request_t request)
 {
+    // Testar Condicoes
+    if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
+        reply(request.value.header.pid, RC_OP_NALLOW, getReplyFromRequest(request));
+    else if (contaExistente[request.value.transfer.account_id] == false)
+        reply(request.value.header.pid, RC_ID_IN_USE, getReplyFromRequest(request));
+    else if (request.value.header.account_id == request.value.transfer.account_id)
+        reply(request.value.header.pid, RC_SAME_ID, getReplyFromRequest(request));
+    else if (contasBancarias[request.value.header.account_id].balance - request.value.transfer.amount < MIN_BALANCE)
+        reply(request.value.header.pid, RC_NO_FUNDS, getReplyFromRequest(request));
+    else if (contasBancarias[request.value.transfer.account_id].balance + request.value.transfer.amount > MAX_BALANCE)
+        reply(request.value.header.pid, RC_NO_FUNDS, getReplyFromRequest(request));
+    else
+    {
+        // Fazer transferencia
+        contasBancarias[request.value.header.account_id].balance -= request.value.transfer.amount;
+        contasBancarias[request.value.transfer.account_id].balance += request.value.transfer.amount;
 
+        reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
+    }
 }
 
 void handleShutDown(tlv_request_t request)
 {
-
 }
 
 void handleRequest(tlv_request_t request)
 {
     switch (request.type)
     {
-        case OP_CREATE_ACCOUNT:
-            handleAccountCreation(request);
-            break;
+    case OP_CREATE_ACCOUNT:
+        handleAccountCreation(request);
+        break;
 
-        case OP_BALANCE:
-            handleGetBalance(request);
-            break;
+    case OP_BALANCE:
+        handleGetBalance(request);
+        break;
 
-        case OP_TRANSFER:
-            handleTransfer(request);
-            break;
+    case OP_TRANSFER:
+        handleTransfer(request);
+        break;
 
-        case OP_SHUTDOWN:
-            handleShutDown(request);
-            break;
+    case OP_SHUTDOWN:
+        handleShutDown(request);
+        break;
 
-        default:
-            break;
+    default:
+        break;
     }
 }
 
@@ -181,7 +196,17 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
     {
         reply.value.header.ret_code = answer;
         reply.length = sizeof(reply.value.header);
-        
+
+        switch (reply.type)
+        {
+        case OP_TRANSFER:
+            reply.value.transfer.balance = contasBancarias[reply.value.header.account_id].balance;
+            reply.length += reply.value.transfer.balance;
+            break;
+        default:
+            break;
+        }
+
         // TODO
         // Foi preciso adicionar + 8, se nao nao dava
         // É preciso dps dar uma olhadela nisto
@@ -331,6 +356,8 @@ int main(int argc, char *argv[], char *envp[])
 
         tlv_request_t temp;
         read(fifoFD, &temp, sizeof(temp)); //ERROR EBADF
+        // TO DO
+        // log REPLY
 
         //printf("[Debug Only] Request read\n");
 
