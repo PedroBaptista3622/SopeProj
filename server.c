@@ -9,8 +9,9 @@
 
 #include "server_functions.h"
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;               //Used for request queue
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;              //Used for waking "sleeping" threads, when a request is added
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //Used for request queue
+//pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for waking "sleeping" threads, when a request is added
+
 pthread_mutex_t mutexWaitingThreads = PTHREAD_MUTEX_INITIALIZER; //Used for controlling the nThreadsWaitingForRequests writes
 
 pthread_mutex_t mutexAccounts = PTHREAD_MUTEX_INITIALIZER; //Used for the accounts array
@@ -35,9 +36,7 @@ int rear = -1;
 
 tlv_request_t peekFirstQueueElement()
 {
-    pthread_mutex_lock(&mutex);
     return requestQueue[firstQueueElement];
-    pthread_mutex_unlock(&mutex);
 }
 
 int getQueueSize()
@@ -52,8 +51,6 @@ bool isFull()
 
 void addRequestToQueue(tlv_request_t request)
 {
-    pthread_mutex_lock(&mutex);
-
     if (!isFull())
     {
         if (rear == MAX_REQUEST_QUEUE_LENGTH - 1)
@@ -65,16 +62,13 @@ void addRequestToQueue(tlv_request_t request)
         nCurrentWaitingRequests++;
     }
 
-    //printf("Request added\n");
 
-    pthread_mutex_unlock(&mutex);
     pthread_cond_signal(&requestAdded);
 }
 
 tlv_request_t getFirstQueueElement()
 {
     //printf("B4 lock\n");
-    pthread_mutex_lock(&mutex);
     //printf("MutexLocked!\n");
 
     tlv_request_t request = requestQueue[firstQueueElement++];
@@ -84,9 +78,8 @@ tlv_request_t getFirstQueueElement()
         firstQueueElement = 0;
     }
 
-    nCurrentWaitingRequests--;
 
-    pthread_mutex_unlock(&mutex);
+    nCurrentWaitingRequests--;
 
     return request;
 }
@@ -281,42 +274,37 @@ bool authenticate(const uint32_t accID, const char *password)
 //TODO: CHANGE FUNCTION (and args) OF THREADS
 void *threadFunc(void *arg)
 {
+    pthread_mutex_lock(&mutex);
+    int nElementsQueue = getQueueSize();
+    pthread_mutex_unlock(&mutex); 
 
-    while (!shuttingDown || (getQueueSize() != 0)) //Deixa de executar qnd shuttingDown = true && QueueSize = 0
+    while(!shuttingDown || (nElementsQueue != 0))
     {
-        if (getQueueSize() == 0)
-        {
-            //printf("Queue Vazia!\n");
+        pthread_mutex_lock(&mutex);
 
-            printf("[Thread n %ld ] - LOCK mutexWaitingThreads\n", pthread_self());
+        if(getQueueSize() == 0)
+        {
             pthread_mutex_lock(&mutexWaitingThreads);
             nThreadsWaitingForRequests++;
             pthread_mutex_unlock(&mutexWaitingThreads);
-            printf("[Thread n %ld ] - UNLOCK mutexWaitingThreads\n", pthread_self());
 
-            printf("[Thread n %ld ] - SLEEP mutexWaitingThreads\n", pthread_self());
-            pthread_cond_wait(&requestAdded, &mutex2);
-            printf("[Thread n %ld ] - WAKE mutexWaitingThreads\n", pthread_self());
+            pthread_cond_wait(&requestAdded, &mutex);
 
-            printf("[Thread n %ld ] - LOCK mutexWaitingThreads\n", pthread_self());
             pthread_mutex_lock(&mutexWaitingThreads);
             nThreadsWaitingForRequests--;
             pthread_mutex_unlock(&mutexWaitingThreads);
-            printf("[Thread n %ld ] - UNLOCK mutexWaitingThreads\n", pthread_self());
         }
 
-        if (getQueueSize() > 0)
-        {
-            //printf("Queue n esta mais vazia, handler chamado\n");
+
+        if(getQueueSize() > 0)
             handleRequest(getFirstQueueElement());
-        }
+
+        nElementsQueue = getQueueSize();        
+        pthread_mutex_unlock(&mutex);
     }
 
-    //printf("Thread %ld Dead\n", pthread_self());
-    write(STDOUT_FILENO, "Dead\n", 6);
-    //pthread_cond_broadcast(&requestAdded);
+    printf("Thread %ld Dead\n", pthread_self());
     return NULL;
-    //pthread_exit(NULL);
 }
 
 void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffices)
@@ -347,11 +335,11 @@ void waitForAllThreads(pthread_t listTids[], size_t nBankOffices)
 
     pthread_cond_broadcast(&requestAdded); //This should unblock all the threads... Not working *-*
 
-    // for (size_t i = 1; i <= nBankOffices; i++)
-    // {
-    //     printf("Waiting for %ld\n", listTids[i]);
-    //     pthread_join(listTids[i], NULL);
-    // }
+    for (size_t i = 1; i <= nBankOffices; i++)
+    {
+        printf("Waiting for %ld\n", listTids[i]);
+        pthread_join(listTids[i], NULL);
+    }
 }
 
 //Utility functions-------------------------------------------------------------------------------------------------------------------------------
@@ -426,7 +414,11 @@ int main(int argc, char *argv[], char *envp[])
                 }
             }
             else
+            {
+                pthread_mutex_lock(&mutex);
                 addRequestToQueue(temp);
+                pthread_mutex_unlock(&mutex);
+            }
         }
     }
 
