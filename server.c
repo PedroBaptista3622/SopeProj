@@ -10,7 +10,7 @@
 #include "server_functions.h"
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //Used for request queue
-//pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for waking "sleeping" threads, when a request is added
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for activeBankOfficesListGlobal
 
 pthread_mutex_t mutexWaitingThreads = PTHREAD_MUTEX_INITIALIZER; //Used for controlling the nThreadsWaitingForRequests writes
 
@@ -25,8 +25,21 @@ bool contaExistente[MAX_BANK_ACCOUNTS] = {false};
 
 bool shuttingDown = false;
 
+pthread_t activeBankOfficesListGlobal[MAX_BANK_OFFICES];
+
 void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password);
 void reply(pid_t pid, int answer, tlv_reply_t reply);
+
+int getMyID(pthread_t myTid)
+{
+    for(size_t i = 0; i < MAX_BANK_OFFICES; i++)
+    {
+        if(activeBankOfficesListGlobal[i] == myTid)
+            return i;
+    }
+
+    return 0;
+}
 
 //Request / reply related functions-----------------------------------------------------------------------------------------------------------------------
 tlv_request_t requestQueue[MAX_REQUEST_QUEUE_LENGTH];
@@ -216,7 +229,11 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
         close(fifoFD);
     }
 
-    logReply(serverLogFD, pthread_self(), &reply);
+    pthread_mutex_lock(&mutex2);
+    int myID = getMyID(pthread_self());
+    pthread_mutex_unlock(&mutex2);
+
+    logReply(serverLogFD, myID, &reply);
     //printf("LogDONE\n");
 }
 
@@ -249,13 +266,12 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 
     //Adding account
     addBankAccount(conta);
-    logAccountCreation(serverLogFD, pthread_self(), &conta);
 
-    //Debug only
-    //printf("ID = <%d>\n", conta.account_id);
-    //printf("Bal = <%d>\n", conta.balance);
-    //printf("Hash = <%s>\n", conta.hash);
-    //printf("Salt = <%s>\n", conta.salt);
+    pthread_mutex_lock(&mutex2);
+    int myID = getMyID(pthread_self());
+    pthread_mutex_unlock(&mutex2);
+
+    logAccountCreation(serverLogFD, myID, &conta);
 }
 
 bool authenticate(const uint32_t accID, const char *password)
@@ -299,7 +315,7 @@ void *threadFunc(void *arg)
         pthread_mutex_unlock(&mutex);
     }
 
-    printf("Thread %ld Dead\n", pthread_self());
+    //printf("Thread %ld Dead\n", pthread_self());
     return NULL;
 }
 
@@ -316,7 +332,7 @@ void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffice
     for (size_t i = 1; i <= nBankOffices; i++)
     {
         pthread_t temp;
-        pthread_create(&temp, NULL, threadFunc, NULL); //TODO: CHANGE FUNCTION (and args) OF THREADS
+        pthread_create(&temp, NULL, threadFunc, NULL);
         logBankOfficeOpen(serverLogFD, i, temp);
         listBankOffices[i] = temp;
     }
@@ -329,7 +345,7 @@ void waitForAllThreads(pthread_t listTids[], size_t nBankOffices)
         sleep(1);
     }
 
-    pthread_cond_broadcast(&requestAdded); //This should unblock all the threads... Not working *-*
+    pthread_cond_broadcast(&requestAdded);
 
     for (size_t i = 1; i <= nBankOffices; i++)
     {
@@ -365,6 +381,8 @@ int main(int argc, char *argv[], char *envp[])
 
     initializeBankOffices(activeBankOfficesList, nBankOffices); //activeThreads created, running and tids loaded to activeBankOfficesList
 
+    for(size_t i = 0; i <= nBankOffices; i++)
+        activeBankOfficesListGlobal[i] = activeBankOfficesList[i];
     //printf("[Debug Only] Opening Fifo\n");
 
     int fifoFD;
@@ -374,18 +392,14 @@ int main(int argc, char *argv[], char *envp[])
 
     while (!shuttingDown)
     {
-        //printf("[Debug Only] Reading requests\n");
-
         tlv_request_t temp;
-        read(fifoFD, &temp, sizeof(temp)); //ERROR EBADF
+        read(fifoFD, &temp, sizeof(temp));
         // TO DO
         // log REPLY
 
-        //printf("[Debug Only] Request read\n");
 
         if (!authenticate(temp.value.header.account_id, temp.value.header.password))
         {
-            //printf("[Debug Only] Aut failed\n");
             reply(temp.value.header.pid, RC_LOGIN_FAIL, getReplyFromRequest(temp));
         }
         else
