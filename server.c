@@ -409,6 +409,7 @@ int main(int argc, char *argv[], char *envp[])
                 if (temp.value.header.account_id == ADMIN_ACCOUNT_ID)
                 {
                     shuttingDown = true;
+                    fchmod(fifoFD, S_IRGRP | S_IROTH | S_IRUSR);
                     printf("ShuttingDown enabled!\n");
 
                     tlv_reply_t tempRep = getReplyFromRequest(temp);
@@ -434,6 +435,7 @@ int main(int argc, char *argv[], char *envp[])
 
     waitForAllThreads(activeBankOfficesList, nBankOffices);
     closeFD(fifoFD); //Should only be executed once the admin enters de command to end server.
+    removeFileFromPath(SERVER_FIFO_PATH); //Deletes fifo after execution
     printf("[Server] End.\n");
     return 0;
 }

@@ -31,3 +31,4 @@ int initAndOpenFIFO(const char *path, mode_t mode, int flags);
 
 void closeFD(int fd);
 
+void removeFileFromPath(char * path);
