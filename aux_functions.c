@@ -1,4 +1,5 @@
 #include "aux_functions.h"
+#include <sys/wait.h>
 
 int getWords(char *base, char target[10][20])
 {
@@ -105,4 +106,29 @@ int initAndOpenFIFO(const char *path, mode_t mode, int flags)
 void closeFD(int fd)
 {
     close(fd);
+}
+
+void removeFileFromPath(char * path)
+{
+    pid_t pid;
+    char cmd1[] = "rm";  
+    char *args1[4];
+
+    args1[0] = "rm";
+    args1[1] = "-f";
+    args1[2] = path;
+    args1[3] = NULL;
+
+    pid = fork();
+
+    if(pid == 0) //Child
+    {
+        execvp(cmd1, args1);
+        perror("Exec");
+    }
+    else
+    {
+        wait(NULL);
+        return;
+    }
 }
