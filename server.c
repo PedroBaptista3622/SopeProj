@@ -130,12 +130,15 @@ void handleGetBalance(tlv_request_t request, int myID)
         tlv_reply_t temp = getReplyFromRequest(request);
 
         pthread_mutex_lock(&mutexAccounts);
+        logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, request.value.header.account_id);
+
         usleep(request.value.header.op_delay_ms * 1000);
         logSyncDelay(serverLogFD, myID, request.value.header.account_id, request.value.header.op_delay_ms);
-        
+
         temp.value.balance.balance = contasBancarias[request.value.header.account_id].balance;
 
         pthread_mutex_unlock(&mutexAccounts);
+        logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, request.value.header.account_id);
 
         reply(request.value.header.pid, RC_OK, temp);
     }
@@ -157,14 +160,16 @@ void handleTransfer(tlv_request_t request, int myID)
     else
     {
         pthread_mutex_lock(&mutexAccounts);
+        logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, request.value.header.account_id);
         usleep(request.value.header.op_delay_ms * 1000);
         logSyncDelay(serverLogFD, myID, request.value.header.account_id, request.value.header.op_delay_ms);
-        
+
         // Fazer transferencia
         contasBancarias[request.value.header.account_id].balance -= request.value.transfer.amount;
         contasBancarias[request.value.transfer.account_id].balance += request.value.transfer.amount;
-        
+
         pthread_mutex_unlock(&mutexAccounts);
+        logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, request.value.header.account_id);
 
         reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
     }
@@ -258,12 +263,15 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
 
     //Adding account
     pthread_mutex_lock(&mutexAccounts);
+    logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, id);
+
     usleep(op_delay_ms * 1000);
     logSyncDelay(serverLogFD, myID, id, op_delay_ms);
 
     addBankAccount(conta);
 
     pthread_mutex_unlock(&mutexAccounts);
+    logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, id);
 
     logAccountCreation(serverLogFD, myID, &conta);
 }
@@ -279,36 +287,50 @@ bool authenticate(const uint32_t accID, const char *password)
 
 void *threadFunc(void *arg)
 {
-    pthread_mutex_lock(&mutex);
-    int nElementsQueue = getQueueSize();
-    pthread_mutex_unlock(&mutex);
-
     pthread_mutex_lock(&mutex2);
     int myID = getMyID(pthread_self());
     pthread_mutex_unlock(&mutex2);
 
+    pthread_mutex_lock(&mutex);
+    logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
+
+    int nElementsQueue = getQueueSize();
+    pthread_mutex_unlock(&mutex);
+    logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
+
     while (!shuttingDown || (nElementsQueue != 0))
     {
         pthread_mutex_lock(&mutex);
+        logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
 
         if (getQueueSize() == 0)
         {
             pthread_mutex_lock(&mutexWaitingThreads);
+            logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
+
             nThreadsWaitingForRequests++;
+
             pthread_mutex_unlock(&mutexWaitingThreads);
+            logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
 
             pthread_cond_wait(&requestAdded, &mutex);
 
             pthread_mutex_lock(&mutexWaitingThreads);
+            logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
+
             nThreadsWaitingForRequests--;
+
             pthread_mutex_unlock(&mutexWaitingThreads);
+            logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
         }
 
         if (getQueueSize() > 0)
             handleRequest(getFirstQueueElement(), myID);
 
         nElementsQueue = getQueueSize();
+
         pthread_mutex_unlock(&mutex);
+        logSyncMech(serverLogFD, myID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
     }
 
     logBankOfficeClose(serverLogFD, myID, pthread_self());
@@ -413,8 +435,12 @@ int main(int argc, char *argv[], char *envp[])
             else
             {
                 pthread_mutex_lock(&mutex);
+                logSyncMech(serverLogFD, 0, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_PRODUCER, temp.value.header.pid);
+
                 addRequestToQueue(temp);
+
                 pthread_mutex_unlock(&mutex);
+                logSyncMech(serverLogFD, 0, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_PRODUCER, temp.value.header.pid);
             }
         }
     }
