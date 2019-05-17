@@ -9,7 +9,7 @@
 
 #include "server_functions.h"
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //Used for request queue
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;  //Used for request queue
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; //Used for activeBankOfficesListGlobal
 
 pthread_mutex_t mutexWaitingThreads = PTHREAD_MUTEX_INITIALIZER; //Used for controlling the nThreadsWaitingForRequests writes
@@ -27,14 +27,14 @@ bool shuttingDown = false;
 
 pthread_t activeBankOfficesListGlobal[MAX_BANK_OFFICES];
 
-void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password);
+void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password, uint32_t op_delay_ms);
 void reply(pid_t pid, int answer, tlv_reply_t reply);
 
 int getMyID(pthread_t myTid)
 {
-    for(size_t i = 0; i < MAX_BANK_OFFICES; i++)
+    for (size_t i = 0; i < MAX_BANK_OFFICES; i++)
     {
-        if(activeBankOfficesListGlobal[i] == myTid)
+        if (activeBankOfficesListGlobal[i] == myTid)
             return i;
     }
 
@@ -75,22 +75,17 @@ void addRequestToQueue(tlv_request_t request)
         nCurrentWaitingRequests++;
     }
 
-
     pthread_cond_signal(&requestAdded);
 }
 
 tlv_request_t getFirstQueueElement()
 {
-    //printf("B4 lock\n");
-    //printf("MutexLocked!\n");
-
     tlv_request_t request = requestQueue[firstQueueElement++];
 
     if (firstQueueElement == MAX_REQUEST_QUEUE_LENGTH)
     {
         firstQueueElement = 0;
     }
-
 
     nCurrentWaitingRequests--;
 
@@ -116,7 +111,7 @@ void handleAccountCreation(tlv_request_t request)
         }
         else
         {
-            createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password);
+            createAccount(request.value.create.account_id, request.value.create.balance, request.value.create.password, request.value.header.op_delay_ms);
             reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
         }
     }
@@ -126,20 +121,27 @@ void handleAccountCreation(tlv_request_t request)
     }
 }
 
-void handleGetBalance(tlv_request_t request)
+void handleGetBalance(tlv_request_t request, int myID)
 {
     if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
         reply(request.value.header.pid, RC_OP_NALLOW, getReplyFromRequest(request));
     else
     {
         tlv_reply_t temp = getReplyFromRequest(request);
+
+        pthread_mutex_lock(&mutexAccounts);
+        usleep(request.value.header.op_delay_ms * 1000);
+        logSyncDelay(serverLogFD, myID, request.value.header.account_id, request.value.header.op_delay_ms);
+        
         temp.value.balance.balance = contasBancarias[request.value.header.account_id].balance;
+
+        pthread_mutex_unlock(&mutexAccounts);
 
         reply(request.value.header.pid, RC_OK, temp);
     }
 }
 
-void handleTransfer(tlv_request_t request)
+void handleTransfer(tlv_request_t request, int myID)
 {
     // Testar Condicoes
     if (request.value.header.account_id == ADMIN_ACCOUNT_ID)
@@ -154,38 +156,35 @@ void handleTransfer(tlv_request_t request)
         reply(request.value.header.pid, RC_NO_FUNDS, getReplyFromRequest(request));
     else
     {
+        pthread_mutex_lock(&mutexAccounts);
+        usleep(request.value.header.op_delay_ms * 1000);
+        logSyncDelay(serverLogFD, myID, request.value.header.account_id, request.value.header.op_delay_ms);
+        
         // Fazer transferencia
         contasBancarias[request.value.header.account_id].balance -= request.value.transfer.amount;
         contasBancarias[request.value.transfer.account_id].balance += request.value.transfer.amount;
+        
+        pthread_mutex_unlock(&mutexAccounts);
 
         reply(request.value.header.pid, RC_OK, getReplyFromRequest(request));
     }
 }
 
-void handleShutDown(tlv_request_t request)
+void handleRequest(tlv_request_t request, int myID)
 {
-}
+    logRequest(serverLogFD, myID, &request);
 
-void handleRequest(tlv_request_t request)
-{
     switch (request.type)
     {
     case OP_CREATE_ACCOUNT:
         handleAccountCreation(request);
         break;
-
     case OP_BALANCE:
-        handleGetBalance(request);
+        handleGetBalance(request, myID);
         break;
-
     case OP_TRANSFER:
-        handleTransfer(request);
+        handleTransfer(request, myID);
         break;
-
-    case OP_SHUTDOWN:
-        handleShutDown(request);
-        break;
-
     default:
         break;
     }
@@ -195,11 +194,7 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
 {
     const char *fifoName = getUserFifoPath((int)pid);
 
-    //printf("[DEBUG ONLY] fifoNameCreated\n");
-
     int fifoFD = initAndOpenFIFO(fifoName, O_WRONLY, O_CREAT);
-
-    //printf("[DEBUG ONLY] fifoInit\n");
 
     if (fifoFD == -1)
     {
@@ -222,9 +217,6 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
             break;
         }
 
-        // TODO
-        // Foi preciso adicionar + 8, se nao nao dava
-        // É preciso dps dar uma olhadela nisto
         write(fifoFD, &reply, sizeof(reply));
         close(fifoFD);
     }
@@ -234,7 +226,6 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
     pthread_mutex_unlock(&mutex2);
 
     logReply(serverLogFD, myID, &reply);
-    //printf("LogDONE\n");
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
@@ -242,14 +233,11 @@ void reply(pid_t pid, int answer, tlv_reply_t reply)
 // Account stuff ---------------------------------------------------------------------------------------------------------------------------------
 void addBankAccount(bank_account_t acc)
 {
-    pthread_mutex_lock(&mutexAccounts);
     contasBancarias[acc.account_id] = acc;
     contaExistente[acc.account_id] = true;
-    pthread_mutex_unlock(&mutexAccounts);
 }
 
-//TODO: VERIFICAR DADOS CLIENTE?
-void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password) //Assume que os valores estao dentro das normas
+void createAccount(const uint32_t id, const uint32_t initialBalance, const char *password, uint32_t op_delay_ms) //Assume que os valores estao dentro das normas
 {
     bank_account_t conta;
     conta.account_id = id;
@@ -264,12 +252,18 @@ void createAccount(const uint32_t id, const uint32_t initialBalance, const char 
     //Password part
     strcpy(conta.hash, echoSha256sum(password, saltyNumber));
 
-    //Adding account
-    addBankAccount(conta);
-
     pthread_mutex_lock(&mutex2);
     int myID = getMyID(pthread_self());
     pthread_mutex_unlock(&mutex2);
+
+    //Adding account
+    pthread_mutex_lock(&mutexAccounts);
+    usleep(op_delay_ms * 1000);
+    logSyncDelay(serverLogFD, myID, id, op_delay_ms);
+
+    addBankAccount(conta);
+
+    pthread_mutex_unlock(&mutexAccounts);
 
     logAccountCreation(serverLogFD, myID, &conta);
 }
@@ -283,18 +277,21 @@ bool authenticate(const uint32_t accID, const char *password)
 
 //Bank Offices stuff------------------------------------------------------------------------------------------------------------------------------
 
-//TODO: CHANGE FUNCTION (and args) OF THREADS
 void *threadFunc(void *arg)
 {
     pthread_mutex_lock(&mutex);
     int nElementsQueue = getQueueSize();
-    pthread_mutex_unlock(&mutex); 
+    pthread_mutex_unlock(&mutex);
 
-    while(!shuttingDown || (nElementsQueue != 0))
+    pthread_mutex_lock(&mutex2);
+    int myID = getMyID(pthread_self());
+    pthread_mutex_unlock(&mutex2);
+
+    while (!shuttingDown || (nElementsQueue != 0))
     {
         pthread_mutex_lock(&mutex);
 
-        if(getQueueSize() == 0)
+        if (getQueueSize() == 0)
         {
             pthread_mutex_lock(&mutexWaitingThreads);
             nThreadsWaitingForRequests++;
@@ -307,28 +304,20 @@ void *threadFunc(void *arg)
             pthread_mutex_unlock(&mutexWaitingThreads);
         }
 
+        if (getQueueSize() > 0)
+            handleRequest(getFirstQueueElement(), myID);
 
-        if(getQueueSize() > 0)
-            handleRequest(getFirstQueueElement());
-
-        nElementsQueue = getQueueSize();        
+        nElementsQueue = getQueueSize();
         pthread_mutex_unlock(&mutex);
     }
 
-    //printf("Thread %ld Dead\n", pthread_self());
+    logBankOfficeClose(serverLogFD, myID, pthread_self());
+
     return NULL;
 }
 
 void initializeBankOffices(pthread_t listBankOffices[], const size_t nBankOffices)
 {
-    /* 
-    *
-    * Espaco vazio, para lembrar que aqui e necessario adicionar codigo para log da criacao do bankOffice
-    * 
-    * 
-    */
-    //printf("[Debug Only] Init banckOffices\n");
-
     for (size_t i = 1; i <= nBankOffices; i++)
     {
         pthread_t temp;
@@ -361,7 +350,7 @@ void initServer(char *argv[])
     FILE *temp = fopen(SERVER_LOGFILE, "w");
     serverLogFD = fileno(temp); //Cria o ficheiro de log do servidor
 
-    createAccount(ADMIN_ACCOUNT_ID, 0, argv[2]); //Cria conta do admin
+    createAccount(ADMIN_ACCOUNT_ID, 0, argv[2], 0); //Cria conta do admin
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------
@@ -381,22 +370,17 @@ int main(int argc, char *argv[], char *envp[])
 
     initializeBankOffices(activeBankOfficesList, nBankOffices); //activeThreads created, running and tids loaded to activeBankOfficesList
 
-    for(size_t i = 0; i <= nBankOffices; i++)
+    for (size_t i = 0; i <= nBankOffices; i++)
         activeBankOfficesListGlobal[i] = activeBankOfficesList[i];
-    //printf("[Debug Only] Opening Fifo\n");
 
     int fifoFD;
     fifoFD = initAndOpenFIFO(SERVER_FIFO_PATH, FIFO_READ_WRITE_ALL_PERM, O_RDONLY); //Allows the user to insert commands;
-
-    //printf("[Debug Only] Fifo Opened\n");
 
     while (!shuttingDown)
     {
         tlv_request_t temp;
         read(fifoFD, &temp, sizeof(temp));
-        // TO DO
-        // log REPLY
-
+        logRequest(serverLogFD, 0, &temp);
 
         if (!authenticate(temp.value.header.account_id, temp.value.header.password))
         {
@@ -409,6 +393,8 @@ int main(int argc, char *argv[], char *envp[])
                 if (temp.value.header.account_id == ADMIN_ACCOUNT_ID)
                 {
                     shuttingDown = true;
+                    usleep(temp.value.header.op_delay_ms * 1000);
+                    logDelay(serverLogFD, 0, temp.value.header.op_delay_ms);
                     fchmod(fifoFD, S_IRGRP | S_IROTH | S_IRUSR);
                     printf("ShuttingDown enabled!\n");
 
@@ -418,7 +404,7 @@ int main(int argc, char *argv[], char *envp[])
                 }
                 else
                 {
-                    printf("Try to shutdown without permitins\n");
+                    printf("Try to shutdown without permitions\n");
                     tlv_reply_t tempRep = getReplyFromRequest(temp);
                     tempRep.value.shutdown.active_offices = 0;
                     reply(temp.value.header.pid, RC_OP_NALLOW, tempRep);
@@ -434,7 +420,7 @@ int main(int argc, char *argv[], char *envp[])
     }
 
     waitForAllThreads(activeBankOfficesList, nBankOffices);
-    closeFD(fifoFD); //Should only be executed once the admin enters de command to end server.
+    closeFD(fifoFD);                      //Should only be executed once the admin enters de command to end server.
     removeFileFromPath(SERVER_FIFO_PATH); //Deletes fifo after execution
     printf("[Server] End.\n");
     return 0;
