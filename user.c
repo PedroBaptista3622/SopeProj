@@ -82,7 +82,5 @@ int main(int argc, char *argv[])
     logReply(logFile_fd, getpid(), &reply);
     removeFileFromPath((char * )USER_FIFO_PATH);
 
-    printf("No problems!\n");
-
     return 0;
 }

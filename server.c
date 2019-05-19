@@ -360,7 +360,6 @@ void waitForAllThreads(pthread_t listTids[], size_t nBankOffices)
 
     for (size_t i = 1; i <= nBankOffices; i++)
     {
-        printf("Waiting for %ld\n", listTids[i]);
         pthread_join(listTids[i], NULL);
     }
 }
@@ -381,8 +380,6 @@ int main(int argc, char *argv[], char *envp[])
 
     if (checkArgs(argc, argv)) //This func returns 1 if there's any problem with the arguments
         return 1;              //If that happens, the program closes.
-
-    printf("[Server] Starting!\n");
 
     initServer(argv);
 
@@ -418,7 +415,6 @@ int main(int argc, char *argv[], char *envp[])
                     usleep(temp.value.header.op_delay_ms * 1000);
                     logDelay(serverLogFD, 0, temp.value.header.op_delay_ms);
                     fchmod(fifoFD, S_IRGRP | S_IROTH | S_IRUSR);
-                    printf("ShuttingDown enabled!\n");
 
                     tlv_reply_t tempRep = getReplyFromRequest(temp);
                     tempRep.value.shutdown.active_offices = nBankOffices - nThreadsWaitingForRequests;
@@ -426,7 +422,6 @@ int main(int argc, char *argv[], char *envp[])
                 }
                 else
                 {
-                    printf("Try to shutdown without permitions\n");
                     tlv_reply_t tempRep = getReplyFromRequest(temp);
                     tempRep.value.shutdown.active_offices = 0;
                     reply(temp.value.header.pid, RC_OP_NALLOW, tempRep);
@@ -448,6 +443,5 @@ int main(int argc, char *argv[], char *envp[])
     waitForAllThreads(activeBankOfficesList, nBankOffices);
     closeFD(fifoFD);                      //Should only be executed once the admin enters de command to end server.
     removeFileFromPath(SERVER_FIFO_PATH); //Deletes fifo after execution
-    printf("[Server] End.\n");
     return 0;
 }
